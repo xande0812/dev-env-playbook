@@ -1,0 +1,45 @@
+# SNI allowlist (regex, 1 行 1 entry)
+#
+# 運用ルール:
+#   - 新しい package registry を使うツールを足す PR では、この allowlist 差分も
+#     同じ PR で更新する
+#   - agent の WebFetch allowlist と documentation domain は同時更新する
+#     (片方だけ更新しても効かない)
+#   - write 系 (production への CREATE/UPDATE/DELETE) credential はこの allowlist
+#     経由では渡さない (laptop 側に留める)
+
+# ---- Anthropic ----
+^api\.anthropic\.com$
+
+# ---- GitHub (Claude Code / git / gh CLI) ----
+^.*\.github\.com$
+^.*\.githubusercontent\.com$
+^.*\.githubassets\.com$
+^codeload\.github\.com$
+
+# ---- Package registries ----
+^registry\.npmjs\.org$
+^.*\.npmjs\.com$
+^pypi\.org$
+^.*\.pythonhosted\.org$
+
+# ---- OS updates ----
+^.*\.ubuntu\.com$
+^.*\.canonical\.com$
+^keyserver\.ubuntu\.com$
+
+# ---- AWS (SSM / CloudWatch + 別アカウント read-only 確認用、広め) ----
+# 日常業務で別アカウントの read-only 確認をするため広めに許可。
+# トレードオフ: sts/iam/s3.* 等も通る = exfil 経路は構造的に閉じきれない。
+# write 系 credential を渡さない運用規律でカバーする。
+^[a-z0-9-]+\.amazonaws\.com$
+^[a-z0-9-]+\.[a-z0-9-]+\.amazonaws\.com$
+
+# ---- Documentation domains for agent WebFetch ----
+# agent の WebFetch(domain:...) allowlist と必ず同時更新すること。
+^docs\.aws\.amazon\.com$
+^developer\.mozilla\.org$
+^nodejs\.org$
+^.*\.react\.dev$
+^pnpm\.io$
+^docs\.github\.com$

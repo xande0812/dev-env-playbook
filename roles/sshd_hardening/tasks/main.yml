@@ -1,0 +1,25 @@
+---
+# sshd を公開鍵認証のみに固め、secret forward 用の AcceptEnv を入れる。
+- name: Ensure sshd_config.d exists
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install sshd hardening drop-in
+  ansible.builtin.copy:
+    src: 99-hardening.conf
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload sshd
+
+# drop-in 単体では構文検証できないため、full config を sshd -t で検証する。
+# ここで失敗すると play が止まり handler (reload) は flush されない = 壊れた
+# config で sshd を reload しない。
+- name: Validate full sshd configuration
+  ansible.builtin.command: sshd -t
+  changed_when: false

@@ -1,19 +1,15 @@
 # dev-server 環境構築 playbook (ansible-pull / localhost)
 #
-# P1 (現状): ansible-pull がインスタンス上で動き、localhost に適用できることの確認のみ。
-# system / user role は P2 以降で roles/ 配下に追加する。
+# 対象ホスト上で `ansible-pull` により localhost に適用される。
+# system roles を順に適用する。user roles は順次追加予定。
 - name: dev-server environment (pull / localhost)
   hosts: localhost
   connection: local
   become: true
   gather_facts: true
-  tasks:
-    - name: Connectivity check
-      ansible.builtin.ping:
-
-    - name: P1 marker
-      ansible.builtin.debug:
-        msg: >-
-          ansible-pull applied on {{ ansible_hostname | default('localhost') }}
-          (distro={{ ansible_distribution | default('?') }}
-          {{ ansible_distribution_version | default('') }}, P1 OK)
+  roles:
+    - base            # apt 基本パッケージ + AWS CLI v2
+    - sshd_hardening  # sshd の公開鍵認証強制 + AcceptEnv
+    - apparmor_bwrap  # bwrap に userns を許可する AppArmor profile
+    - squid           # egress proxy (SNI allowlist)
+    - dev_user        # 開発ユーザー作成 + authorized_keys (SSM 経由)

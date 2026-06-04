@@ -1,0 +1,20 @@
+---
+# Ubuntu 24.04+ は kernel.apparmor_restrict_unprivileged_userns=1 が既定で、
+# unprivileged プロセスが user namespace を作れない。bwrap は userns 必須なので、
+# bwrap binary に限り userns を許可する AppArmor profile を入れる。
+- name: Ensure /etc/apparmor.d exists
+  ansible.builtin.file:
+    path: /etc/apparmor.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install AppArmor profile for bwrap
+  ansible.builtin.copy:
+    src: bwrap
+    dest: /etc/apparmor.d/bwrap
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload bwrap apparmor profile

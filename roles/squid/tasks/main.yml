@@ -1,0 +1,161 @@
+---
+# Ubuntu の squid パッケージは SSL Bump 未対応 (OpenSSL なしビルド) なので
+# squid-openssl を入れる。
+- name: Install squid-openssl and openssl
+  ansible.builtin.apt:
+    name:
+      - squid-openssl
+      - openssl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+# package 名変更等で静かに SSL Bump 無効版に戻る事故を起動時に検出する。
+- name: Assert squid is built with --with-openssl
+  ansible.builtin.command: squid -v
+  register: squid_v
+  changed_when: false
+  failed_when: "'--with-openssl' not in squid_v.stdout"
+
+- name: Ensure /etc/squid is owned by proxy
+  ansible.builtin.file:
+    path: /etc/squid
+    state: directory
+    owner: proxy
+    group: proxy
+    mode: '0755'
+
+# --- dummy CA (ssl_bump の generate-host-certificates 用、冪等生成) -----------
+- name: Check dummy cert
+  ansible.builtin.stat:
+    path: /etc/squid/dummy.pem
+  register: dummy_pem
+
+- name: Generate squid dummy CA
+  when: not dummy_pem.stat.exists or dummy_pem.stat.size == 0
+  block:
+    - name: Create dummy key/cert
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -new
+          - -newkey
+          - rsa:2048
+          - -days
+          - "3650"
+          - -nodes
+          - -x509
+          - -subj
+          - /CN=squid.dev-server.local
+          - -keyout
+          - /etc/squid/dummy.key
+          - -out
+          - /etc/squid/dummy.crt
+      changed_when: true
+
+    - name: Assemble dummy.pem (cert + key)
+      ansible.builtin.shell: cat /etc/squid/dummy.crt /etc/squid/dummy.key > /etc/squid/dummy.pem
+      changed_when: true
+
+    - name: Lock down dummy cert files
+      ansible.builtin.file:
+        path: "/etc/squid/{{ item }}"
+        owner: proxy
+        group: proxy
+        mode: '0600'
+      loop:
+        - dummy.key
+        - dummy.crt
+        - dummy.pem
+
+# --- security_file_certgen DB 初期化 (冪等) ----------------------------------
+- name: Check ssl_db
+  ansible.builtin.stat:
+    path: /var/spool/squid/ssl_db
+  register: ssl_db
+
+- name: Initialize squid ssl_db
+  when: not ssl_db.stat.exists
+  block:
+    - name: Ensure /var/spool/squid exists
+      ansible.builtin.file:
+        path: /var/spool/squid
+        state: directory
+        owner: proxy
+        group: proxy
+        mode: '0755'
+
+    - name: Create ssl_db
+      ansible.builtin.command: /usr/lib/squid/security_file_certgen -c -s /var/spool/squid/ssl_db -M 4MB
+      changed_when: true
+
+    - name: Own ssl_db
+      ansible.builtin.file:
+        path: /var/spool/squid/ssl_db
+        state: directory
+        owner: proxy
+        group: proxy
+        recurse: true
+
+# --- config + allowlist ------------------------------------------------------
+- name: Install squid.conf
+  ansible.builtin.copy:
+    src: squid.conf
+    dest: /etc/squid/squid.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart squid
+
+- name: Install squid allowlist
+  ansible.builtin.copy:
+    src: allowlist.txt
+    dest: /etc/squid/allowlist.txt
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart squid
+
+- name: Validate squid configuration syntax
+  ansible.builtin.command: squid -k parse
+  changed_when: false
+
+- name: Enable and start squid
+  ansible.builtin.systemd:
+    name: squid
+    enabled: true
+    state: started
+
+# 検証の前に pending な restart を反映する (handler は通常 play 末尾で flush される
+# ため、ここで明示 flush しないと検証が古い squid を見てしまう)。
+- name: Apply pending squid restart before verification
+  meta: flush_handlers
+
+# --- 検証: allowlist 内は通り、allowlist 外は弾かれる ------------------------
+- name: Verify squid is active
+  ansible.builtin.command: systemctl is-active squid
+  register: squid_active
+  changed_when: false
+  failed_when: squid_active.stdout != "active"
+
+- name: Verify an allowed domain passes through the proxy
+  ansible.builtin.command: >
+    curl -sS --max-time 15 --retry 3 --retry-delay 2 --retry-connrefused
+    -o /dev/null https://registry.npmjs.org/
+  environment:
+    HTTPS_PROXY: http://127.0.0.1:3128
+  changed_when: false
+
+- name: Verify a non-allowlisted domain is blocked
+  ansible.builtin.command: >
+    curl -sS --max-time 15 -o /dev/null https://example.com/
+  environment:
+    HTTPS_PROXY: http://127.0.0.1:3128
+  register: denied_curl
+  changed_when: false
+  # allowlist 外は ssl_bump terminate で TLS error になり curl が非ゼロ終了するのが正。
+  # exit 0 (= 通ってしまった) なら allowlist enforcement が壊れているので fail。
+  failed_when: denied_curl.rc == 0

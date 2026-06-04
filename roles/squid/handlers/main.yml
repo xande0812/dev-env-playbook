@@ -1,0 +1,6 @@
+---
+# reload では parse 失敗時に古い conf で生き残る挙動があるため restart で揃える。
+- name: Restart squid
+  ansible.builtin.systemd:
+    name: squid
+    state: restarted

@@ -1,0 +1,15 @@
+# 全ホスト共通変数
+# このリポは公開。秘密値は置かない（SSM Parameter Store 等から実行時取得する）。
+
+# 各種 AWS 操作のリージョン
+aws_region: us-east-1
+
+# 開発ユーザー名。このリポを特定の個人に紐付けないため汎用名にしている。
+dev_user_name: human
+
+# 開発ユーザーの authorized_keys を格納した SSM Parameter (String) の名前。
+# 公開鍵そのものはこのリポに置かず、ここから取得する。
+# 【契約】この名前は、インスタンスの IAM role に read 権限が付与された
+# パラメータ名と一致させること。インフラ側で環境プレフィックス (例 dev) を
+# 変える場合は、この値も同じプレフィックスに揃える必要がある。
+authorized_keys_ssm_param: /dev/dev-server/authorized-keys

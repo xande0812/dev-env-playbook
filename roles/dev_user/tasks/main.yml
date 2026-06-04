@@ -1,0 +1,55 @@
+---
+# 開発ユーザー ({{ dev_user_name }}) を作成し、SSM Parameter Store から取得した
+# 公開鍵で SSH (over SSM) ログインできるようにする。
+- name: Create the dev user
+  ansible.builtin.user:
+    name: "{{ dev_user_name }}"
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+
+- name: Grant the dev user passwordless sudo
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ dev_user_name }}"
+    content: "{{ dev_user_name }} ALL=(ALL) NOPASSWD: ALL\n"
+    owner: root
+    group: root
+    mode: '0440'
+    validate: '/usr/sbin/visudo -cf %s'
+
+- name: Enforce 0700 on the dev user home
+  ansible.builtin.file:
+    path: "/home/{{ dev_user_name }}"
+    state: directory
+    owner: "{{ dev_user_name }}"
+    group: "{{ dev_user_name }}"
+    mode: '0700'
+
+- name: Ensure the dev user .ssh dir
+  ansible.builtin.file:
+    path: "/home/{{ dev_user_name }}/.ssh"
+    state: directory
+    owner: "{{ dev_user_name }}"
+    group: "{{ dev_user_name }}"
+    mode: '0700'
+
+# 公開鍵は公開リポに置かず、instance role 権限で SSM Parameter Store から取得する。
+# (CDK 側で instance role に ssm:GetParameter を付与済み)
+- name: Fetch authorized_keys from SSM Parameter Store
+  ansible.builtin.command: >
+    aws ssm get-parameter
+    --name {{ authorized_keys_ssm_param }}
+    --region {{ aws_region }}
+    --query Parameter.Value
+    --output text
+  register: fetched_authorized_keys
+  changed_when: false
+
+- name: Install authorized_keys
+  ansible.builtin.copy:
+    content: "{{ fetched_authorized_keys.stdout }}\n"
+    dest: "/home/{{ dev_user_name }}/.ssh/authorized_keys"
+    owner: "{{ dev_user_name }}"
+    group: "{{ dev_user_name }}"
+    mode: '0600'

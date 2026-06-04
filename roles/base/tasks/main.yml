@@ -1,0 +1,54 @@
+---
+# 基本パッケージと AWS CLI v2 を導入する。
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+      - sudo
+      - unzip
+      - jq
+      - git
+      - bubblewrap
+      - apparmor-utils
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+# Ubuntu 既定の awscli は v1 系で古いため、公式 v2 (aarch64) を入れる。
+- name: Check whether aws CLI is present
+  ansible.builtin.command: aws --version
+  register: aws_version_check
+  changed_when: false
+  failed_when: false
+
+- name: Install AWS CLI v2 (aarch64)
+  when: aws_version_check.rc != 0
+  block:
+    - name: Download AWS CLI v2 installer
+      ansible.builtin.get_url:
+        url: https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip
+        dest: /tmp/awscliv2.zip
+        mode: '0644'
+
+    - name: Unpack AWS CLI v2 installer
+      ansible.builtin.unarchive:
+        src: /tmp/awscliv2.zip
+        dest: /tmp
+        remote_src: true
+
+    - name: Run AWS CLI v2 installer
+      ansible.builtin.command: /tmp/aws/install --update
+      changed_when: true
+
+  always:
+    - name: Clean up AWS CLI installer artifacts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/awscliv2.zip
+        - /tmp/aws
