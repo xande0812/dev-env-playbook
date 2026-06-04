@@ -1,0 +1,19 @@
+# dev-server 環境構築 playbook (ansible-pull / localhost)
+#
+# P1 (現状): ansible-pull がインスタンス上で動き、localhost に適用できることの確認のみ。
+# system / user role は P2 以降で roles/ 配下に追加する。
+- name: dev-server environment (pull / localhost)
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Connectivity check
+      ansible.builtin.ping:
+
+    - name: P1 marker
+      ansible.builtin.debug:
+        msg: >-
+          ansible-pull applied on {{ ansible_hostname | default('localhost') }}
+          (distro={{ ansible_distribution | default('?') }}
+          {{ ansible_distribution_version | default('') }}, P1 OK)
