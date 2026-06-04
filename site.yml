@@ -1,7 +1,8 @@
 # dev-server 環境構築 playbook (ansible-pull / localhost)
 #
 # 対象ホスト上で `ansible-pull` により localhost に適用される。
-# system roles を順に適用する。user roles は順次追加予定。
+# 役割分担: ansible = system 層 + ツール binary 導入 + chezmoi 起動。
+#           dotfiles 本体は chezmoi (公開リポ dev-env-dotfiles) が管理する。
 - name: dev-server environment (pull / localhost)
   hosts: localhost
   connection: local
@@ -13,4 +14,5 @@
     - apparmor_bwrap  # bwrap に userns を許可する AppArmor profile
     - squid           # egress proxy (SNI allowlist)
     - dev_user        # 開発ユーザー作成 + authorized_keys (SSM 経由)
-    - dev_tools       # apt ユーティリティ + mise + グローバル開発ツール
+    - dev_tools       # apt ユーティリティ + mise binary + login shell=zsh
+    - chezmoi         # chezmoi 導入 + dotfiles 適用 (mise install/sheldon lock 込み)

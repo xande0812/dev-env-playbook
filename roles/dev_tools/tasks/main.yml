@@ -9,7 +9,15 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
 
+# 開発ユーザーのログインシェルを zsh にする (zsh は上の apt で導入済み)。
+- name: Set the dev user's login shell to zsh
+  ansible.builtin.user:
+    name: "{{ dev_user_name }}"
+    shell: /usr/bin/zsh
+
 # --- mise 本体 (apt repo 経由で auditable に導入) ----------------------------
+# mise のグローバル設定 (config.toml) と tool install は chezmoi 側で管理する
+# (run_onchange スクリプトで mise install する)。ここでは binary だけ入れる。
 - name: Ensure apt keyrings dir
   ansible.builtin.file:
     path: /etc/apt/keyrings
@@ -44,35 +52,3 @@
     update_cache: true
   environment:
     DEBIAN_FRONTEND: noninteractive
-
-# --- 開発ユーザーのグローバル mise 設定 + ツール install --------------------
-- name: Ensure mise config dir for the dev user
-  ansible.builtin.file:
-    path: "/home/{{ dev_user_name }}/.config/mise"
-    state: directory
-    owner: "{{ dev_user_name }}"
-    group: "{{ dev_user_name }}"
-    mode: '0755'
-
-- name: Render global mise config
-  ansible.builtin.template:
-    src: mise-config.toml.j2
-    dest: "/home/{{ dev_user_name }}/.config/mise/config.toml"
-    owner: "{{ dev_user_name }}"
-    group: "{{ dev_user_name }}"
-    mode: '0644'
-
-# グローバル config は mise が暗黙的に trust するため trust プロンプトは出ない。
-# not_found_auto_install=false でも明示 install は走る。
-- name: Install mise-managed tools for the dev user
-  become: true
-  become_user: "{{ dev_user_name }}"
-  ansible.builtin.command: mise install
-  environment:
-    HOME: "/home/{{ dev_user_name }}"
-  register: mise_install
-  # mise は新規 install 時に進捗を stderr に出す。何も install するものが無ければ
-  # 出力が無いので、それを変更検知のヒューリスティックにする (2 回目以降は changed=0)。
-  changed_when: >-
-    ('install' in (mise_install.stderr | default('') | lower))
-    or ('install' in (mise_install.stdout | default('') | lower))

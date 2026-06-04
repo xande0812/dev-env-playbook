@@ -1,0 +1,41 @@
+---
+# chezmoi を導入し、公開 dotfiles リポを開発ユーザーのホームに適用する。
+# dotfiles 本体・mise/sheldon の設定・mise install/sheldon lock の run スクリプトは
+# すべて dotfiles リポ (chezmoi) 側にある。ansible は binary 導入と起動だけを担う。
+- name: Install chezmoi
+  ansible.builtin.apt:
+    name: chezmoi
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+# 初回のみ clone。以降は pull タスクで更新する。
+- name: Initialize chezmoi from the dotfiles repo
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command:
+    cmd: "chezmoi init {{ dotfiles_repo_url }}"
+    creates: "/home/{{ dev_user_name }}/.local/share/chezmoi/.git"
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+
+- name: Pull latest dotfiles
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command: chezmoi git -- pull --ff-only
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+  register: chezmoi_pull
+  changed_when: "'Already up to date' not in chezmoi_pull.stdout"
+
+# apply は chezmoi が内部で冪等。run_onchange スクリプト (mise install / sheldon
+# lock) は対象設定が変わったときだけ再実行される。
+- name: Apply dotfiles
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command: chezmoi apply --force
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+  changed_when: false
