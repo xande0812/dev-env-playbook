@@ -13,3 +13,4 @@
     - apparmor_bwrap  # bwrap に userns を許可する AppArmor profile
     - squid           # egress proxy (SNI allowlist)
     - dev_user        # 開発ユーザー作成 + authorized_keys (SSM 経由)
+    - dev_tools       # apt ユーティリティ + mise + グローバル開発ツール

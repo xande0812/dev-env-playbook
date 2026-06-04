@@ -1,0 +1,78 @@
+---
+# apt で入る単純なユーティリティ。
+- name: Install apt dev/utility packages
+  ansible.builtin.apt:
+    name: "{{ apt_dev_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+# --- mise 本体 (apt repo 経由で auditable に導入) ----------------------------
+- name: Ensure apt keyrings dir
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Add mise GPG key
+  ansible.builtin.get_url:
+    url: https://mise.jdx.dev/gpg-key.pub
+    dest: /etc/apt/keyrings/mise.asc
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Add mise apt repository
+  ansible.builtin.deb822_repository:
+    name: mise
+    types: [deb]
+    uris: https://mise.jdx.dev/deb
+    suites: stable
+    components: [main]
+    architectures: [arm64]
+    signed_by: /etc/apt/keyrings/mise.asc
+    state: present
+
+- name: Install mise
+  ansible.builtin.apt:
+    name: mise
+    state: present
+    update_cache: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+# --- 開発ユーザーのグローバル mise 設定 + ツール install --------------------
+- name: Ensure mise config dir for the dev user
+  ansible.builtin.file:
+    path: "/home/{{ dev_user_name }}/.config/mise"
+    state: directory
+    owner: "{{ dev_user_name }}"
+    group: "{{ dev_user_name }}"
+    mode: '0755'
+
+- name: Render global mise config
+  ansible.builtin.template:
+    src: mise-config.toml.j2
+    dest: "/home/{{ dev_user_name }}/.config/mise/config.toml"
+    owner: "{{ dev_user_name }}"
+    group: "{{ dev_user_name }}"
+    mode: '0644'
+
+# グローバル config は mise が暗黙的に trust するため trust プロンプトは出ない。
+# not_found_auto_install=false でも明示 install は走る。
+- name: Install mise-managed tools for the dev user
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command: mise install
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+  register: mise_install
+  # mise は新規 install 時に進捗を stderr に出す。何も install するものが無ければ
+  # 出力が無いので、それを変更検知のヒューリスティックにする (2 回目以降は changed=0)。
+  changed_when: >-
+    ('install' in (mise_install.stderr | default('') | lower))
+    or ('install' in (mise_install.stdout | default('') | lower))

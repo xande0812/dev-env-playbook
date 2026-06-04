@@ -13,3 +13,37 @@ dev_user_name: human
 # パラメータ名と一致させること。インフラ側で環境プレフィックス (例 dev) を
 # 変える場合は、この値も同じプレフィックスに揃える必要がある。
 authorized_keys_ssm_param: /dev/dev-server/authorized-keys
+
+# --- 開発ツール ---------------------------------------------------------------
+# apt で入れる単純なシステム/CLI ユーティリティ。
+apt_dev_packages:
+  - zsh
+  - tmux
+  - htop
+  - tree
+  - wget
+  - figlet
+  - lolcat
+  - httpie
+  - build-essential   # neovim treesitter parser のコンパイル等 (gcc/make)
+
+# mise でグローバル管理する開発ツール (tool: version)。
+# version は当面 "latest"。初回 `mise install` 成功後に `mise ls --current` の
+# 解決バージョンへ固定する（これが flake.lock 相当の pin になる）。
+# short name 解決できない git-wt / sheldon は backend を明示する。
+# aqua backend はチェックサム検証あり。ubi は deprecated なので github: を使う。
+mise_global_tools:
+  node: "24"
+  ripgrep: "latest"
+  fd: "latest"
+  fzf: "latest"
+  eza: "latest"
+  starship: "latest"
+  lazygit: "latest"
+  neovim: "latest"
+  uv: "latest"
+  gh: "latest"
+  ghq: "latest"
+  dotenvx: "latest"
+  "github:k1LoW/git-wt": "latest"
+  "aqua:rossmacarthur/sheldon": "latest"
