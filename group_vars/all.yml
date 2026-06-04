@@ -17,6 +17,12 @@ authorized_keys_ssm_param: /dev/dev-server/authorized-keys
 # dotfiles (chezmoi source) の公開リポ。chezmoi が clone/apply する。
 dotfiles_repo_url: https://github.com/xande0812/dev-env-dotfiles.git
 
+# chezmoi はプロビジョニング側のメタツール (mise 管理にはしない)。Ubuntu 26.04 の
+# apt には無いため、GitHub release の .deb を version pin + sha256 で導入する。
+# bump 時は version と sha256 を同時更新し diff レビューする。
+chezmoi_version: "2.70.5"
+chezmoi_deb_sha256: "3d006be5cad96688a8e3870cd79e87be2e93e85197014f0603bacb38c5c4f417"
+
 # apt で入れる単純なシステム/CLI ユーティリティ。
 # zsh プラグイン本体は apt、source は dotfiles 側の .zshrc が行う。
 # mise 管理ツール (node/eza/starship/sheldon/...) は dotfiles の mise config が持つ。
