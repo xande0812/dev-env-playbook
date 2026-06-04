@@ -1,10 +1,12 @@
 ---
 # 開発ユーザー ({{ dev_user_name }}) を作成し、SSM Parameter Store から取得した
 # 公開鍵で SSH (over SSM) ログインできるようにする。
+# login shell は dev_tools が zsh を導入後に設定する。ここで shell を指定すると
+# 毎回 bash に戻して dev_tools と ping-pong するので指定しない (新規作成時は
+# システム既定のシェルになる)。
 - name: Create the dev user
   ansible.builtin.user:
     name: "{{ dev_user_name }}"
-    shell: /bin/bash
     groups: sudo
     append: true
     create_home: true
