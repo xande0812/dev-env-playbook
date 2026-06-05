@@ -85,12 +85,12 @@ exec "$bwrap_bin" \
   --ro-bind /lib /lib \
   --ro-bind-try /lib64 /lib64 \
   --ro-bind-try /run/systemd/resolve /run/systemd/resolve \
-  --ro-bind-try "$HOME/.local/share/mise" "$HOME/.local/share/mise" \
-  --ro-bind-try "$HOME/.config/mise" "$HOME/.config/mise" \
   --proc /proc \
   --dev /dev \
   --tmpfs /tmp \
   --tmpfs /home \
+  --ro-bind-try "$HOME/.local/share/mise" "$HOME/.local/share/mise" \
+  --ro-bind-try "$HOME/.config/mise" "$HOME/.config/mise" \
   --bind "$project" "$project" \
   --bind "$pnpm_store" "$pnpm_store" \
   --bind "$pnpm_cache" "$pnpm_cache" \
