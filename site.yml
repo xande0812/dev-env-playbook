@@ -16,3 +16,5 @@
     - dev_user        # 開発ユーザー作成 + authorized_keys (SSM 経由)
     - dev_tools       # apt ユーティリティ + mise binary + login shell=zsh
     - chezmoi         # chezmoi 導入 + dotfiles 適用 (mise install/sheldon lock 込み)
+    - bwrap_wrappers  # claude/codex/pnpm の bwrap sandbox wrapper + leak 自テスト
+                      # (chezmoi の後: leak test の pnpm 検証が mise install 済 node を使う)

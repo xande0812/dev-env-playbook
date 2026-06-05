@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# bwrap agent sandbox core — claude / codex 共通の隔離核 (旧 nix mkAgentBase 相当)。
+#
+# security-critical な guard / worktree / passthrough ロジックを 1 本に集約し、
+# claude 用 / codex 用で別実装になって drift する事故を防ぐ。app 差分 (持ち込む
+# API キー env・bind する config dir・起動前 touch) は呼び出し側 (bwrap-claude-base /
+# bwrap-codex-base) が env で渡す:
+#   AGENT_NAME           エラー表示名
+#   AGENT_API_KEY_ENVS   sandbox に --setenv で持ち込む API キー env (空白区切り, 空可)
+#   AGENT_RW_BINDS       $HOME 相対で rw bind する config (空白区切り)
+#   AGENT_RO_BINDS       $HOME 相対で ro bind する config (空白区切り, 空可)
+#   AGENT_TOUCH_FILES    --tmpfs /home でマスクされる $HOME 直下ファイルの persistence
+#                        回復用に起動前 touch する $HOME 相対ファイル (空白区切り, 空可)
+#
+# 使い方: agent-base [PASSTHROUGH...] -- COMMAND [ARGS...]
+# PASSTHROUGH:
+#   --passthrough-env KEY              $KEY を sandbox 内に setenv
+#   --passthrough-socket-from-env KEY  $KEY が指す UNIX socket を bind + setenv
+#   --passthrough-env-prefix PREFIX    env のうち PREFIX で始まる全て setenv
+# KEY が未 set / 空 / socket でなければ silently skip する。
+#
+# 設計原則 (旧 nix-config security.md より):
+#   - --clearenv で env を破棄し必要なものだけ復活 (env 経由の secret 漏洩を防ぐ)
+#   - --tmpfs /home で $HOME を隠し、必要パスだけ explicit bind
+#   - ~/.aws ~/.ssh ~/.config/op ~/.env* は絶対に bind しない (bwrap-leak-test が検証)
+#   - project が git worktree なら共有 .git (common dir) も rw 追加 bind
+#   - CLI バイナリは mise が $HOME 配下に install するため ~/.local/share/mise を
+#     ro-bind して sandbox 内から到達可能にする (旧 nix の /nix ro-bind 相当)
+set -euo pipefail
+
+bwrap_bin="/usr/bin/bwrap"
+blocker="/usr/local/lib/bwrap/bwrap-git-network-blocked"
+name="${AGENT_NAME:-bwrap-agent-base}"
+
+project="${PROJECT:-$PWD}"
+
+if [ ! -x "$bwrap_bin" ]; then
+  echo "$name: $bwrap_bin not found or not executable" >&2
+  echo "  bubblewrap (apt) が未導入の可能性。" >&2
+  exit 127
+fi
+
+# ガード: project が $HOME 自身か $HOME の祖先 (例 /home, /) だと --bind が $HOME
+# 全体を sandbox に晒し ~/.aws ~/.ssh が leak する。
+home_real=$(realpath -e "$HOME" 2>/dev/null || echo "$HOME")
+if [ ! -e "$project" ]; then
+  echo "$name: project '$project' does not exist" >&2
+  exit 2
+fi
+project_real=$(realpath -e "$project")
+if [ "$project_real" = "$home_real" ]; then
+  echo "$name: refusing to use \$HOME ($home_real) as project root" >&2
+  echo "  cd into a subdirectory of \$HOME, or set PROJECT=<subdir>." >&2
+  exit 2
+fi
+case "$home_real"/ in
+  "$project_real"/*)
+    echo "$name: refusing — project '$project_real' is an ancestor of \$HOME" >&2
+    echo "  \$HOME ($home_real) would be exposed inside the sandbox." >&2
+    exit 2
+    ;;
+esac
+
+# git worktree 対応: worktree では project 直下の .git は親 repo の
+# .git/worktrees/<name> を指すファイルで、object DB / refs の実体は親 repo の .git
+# 配下にある。project だけ bind すると共有 .git が sandbox 外に取り残され、commit は
+# おろか rev-parse すら "not a git repository" で失敗する。共有 .git が project の外に
+# ある場合だけ rw 追加 bind する (通常 repo は .git が project 配下なので no-op)。
+git_extra_binds=()
+if git_common=$(git -C "$project_real" rev-parse --git-common-dir 2>/dev/null); then
+  case "$git_common" in
+    /*) ;;
+    *) git_common="$project_real/$git_common" ;;
+  esac
+  git_common_real=$(realpath -e "$git_common" 2>/dev/null || true)
+  if [ -n "$git_common_real" ]; then
+    case "$git_common_real"/ in
+      "$project_real"/*) ;; # 共有 .git が project 配下 (= 通常 repo)。bind 済。
+      *)
+        # 共有 .git が project の外 (= worktree)。secret leak ガードを再適用してから bind。
+        if [ "$git_common_real" = "$home_real" ]; then
+          echo "$name: refusing — git common dir is \$HOME ($home_real)" >&2
+          exit 2
+        fi
+        case "$home_real"/ in
+          "$git_common_real"/*)
+            echo "$name: refusing — git common dir '$git_common_real' is an ancestor of \$HOME" >&2
+            echo "  \$HOME ($home_real) would be exposed inside the sandbox." >&2
+            exit 2
+            ;;
+        esac
+        git_extra_binds+=(--bind "$git_common_real" "$git_common_real")
+        ;;
+    esac
+  fi
+fi
+
+# passthrough オプションを parse して bwrap への追加引数を組み立てる。
+passthrough_args=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --passthrough-env)
+      [ "$#" -ge 2 ] || { echo "$name: missing arg for --passthrough-env" >&2; exit 2; }
+      key="$2"; val="${!key:-}"
+      passthrough_args+=(--setenv "$key" "$val")
+      shift 2
+      ;;
+    --passthrough-socket-from-env)
+      [ "$#" -ge 2 ] || { echo "$name: missing arg for --passthrough-socket-from-env" >&2; exit 2; }
+      key="$2"; sock_path="${!key:-}"
+      if [ -n "$sock_path" ] && [ -S "$sock_path" ]; then
+        passthrough_args+=(--setenv "$key" "$sock_path")
+        passthrough_args+=(--bind "$sock_path" "$sock_path")
+      fi
+      shift 2
+      ;;
+    --passthrough-env-prefix)
+      [ "$#" -ge 2 ] || { echo "$name: missing arg for --passthrough-env-prefix" >&2; exit 2; }
+      prefix="$2"
+      while IFS='=' read -r key _; do
+        case "$key" in
+          "$prefix"*) val="${!key:-}"; passthrough_args+=(--setenv "$key" "$val") ;;
+        esac
+      done < <(env || true)
+      shift 2
+      ;;
+    --) shift; break ;;
+    --*) echo "$name: unknown option: $1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+
+[ "$#" -gt 0 ] || { echo "$name: no command specified" >&2; exit 2; }
+
+# API キー env の --setenv (未 set でも空で渡す)。
+api_args=()
+# shellcheck disable=SC2086
+for k in ${AGENT_API_KEY_ENVS:-}; do
+  api_args+=(--setenv "$k" "${!k:-}")
+done
+# config dir の rw / ro bind。
+rw_args=()
+# shellcheck disable=SC2086
+for p in ${AGENT_RW_BINDS:-}; do
+  rw_args+=(--bind-try "$HOME/$p" "$HOME/$p")
+done
+ro_args=()
+# shellcheck disable=SC2086
+for p in ${AGENT_RO_BINDS:-}; do
+  ro_args+=(--ro-bind-try "$HOME/$p" "$HOME/$p")
+done
+
+# --tmpfs /home でマスクされる $HOME 直下ファイル ($HOME/.claude.json 等) を先に
+# touch して persistence を回復する。これをしないと毎回 startup で config not found、
+# 書き込みも tmpfs 上で session 終了と共に蒸発する。
+# shellcheck disable=SC2086
+for f in ${AGENT_TOUCH_FILES:-}; do
+  if [ ! -e "$HOME/$f" ]; then
+    printf '{}\n' > "$HOME/$f"
+    chmod 600 "$HOME/$f"
+  fi
+done
+
+exec "$bwrap_bin" \
+  --clearenv \
+  --setenv HOME "$HOME" \
+  --setenv PATH "$PATH" \
+  --setenv TERM "${TERM:-xterm-256color}" \
+  --setenv LANG "${LANG:-C.UTF-8}" \
+  "${api_args[@]}" \
+  --setenv GIT_SSH_COMMAND "$blocker" \
+  --ro-bind /usr /usr \
+  --ro-bind /etc /etc \
+  --ro-bind-try /opt /opt \
+  --ro-bind /bin /bin \
+  --ro-bind /sbin /sbin \
+  --ro-bind /lib /lib \
+  --ro-bind-try /lib64 /lib64 \
+  --ro-bind-try /run/systemd/resolve /run/systemd/resolve \
+  --ro-bind-try "$HOME/.local/share/mise" "$HOME/.local/share/mise" \
+  --ro-bind-try "$HOME/.config/mise" "$HOME/.config/mise" \
+  --proc /proc \
+  --dev /dev \
+  --tmpfs /tmp \
+  --tmpfs /home \
+  --bind "$project" "$project" \
+  "${git_extra_binds[@]}" \
+  "${rw_args[@]}" \
+  "${ro_args[@]}" \
+  --ro-bind-try "$HOME/.config/git" "$HOME/.config/git" \
+  "${passthrough_args[@]}" \
+  --chdir "$project" \
+  --unshare-pid \
+  --unshare-uts \
+  --unshare-ipc \
+  --new-session \
+  --die-with-parent \
+  -- "$@"

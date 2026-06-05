@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# codex-with-aws-ro: + AWS_*。別アカウントの read-only 確認用。
+set -euo pipefail
+exec /usr/local/lib/bwrap/agent-variant \
+  --name codex-with-aws-ro --base bwrap-codex-base --tool codex \
+  --passthrough "--passthrough-env AWS_ACCESS_KEY_ID --passthrough-env AWS_SECRET_ACCESS_KEY --passthrough-env AWS_SESSION_TOKEN --passthrough-env AWS_DEFAULT_REGION --passthrough-env AWS_REGION --passthrough-env AWS_PROFILE" \
+  --app-args "-c approval_policy=untrusted -c sandbox_mode=danger-full-access" \
+  -- "$@"

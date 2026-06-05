@@ -25,7 +25,26 @@ sudo ansible-pull \
 |---|---|
 | [ansible.cfg](ansible.cfg) | inventory / 出力整形 |
 | [inventory/hosts](inventory/hosts) | localhost のみ（connection=local） |
-| [site.yml](site.yml) | playbook。現状は疎通確認のみ。role は順次追加 |
+| [site.yml](site.yml) | playbook。下記 role を system→user の順で適用 |
+
+### roles（[site.yml](site.yml) の適用順）
+
+| role | 役割 |
+|---|---|
+| [base](roles/base) | apt 基本パッケージ + AWS CLI v2 |
+| [sshd_hardening](roles/sshd_hardening) | sshd の公開鍵認証強制 + AcceptEnv |
+| [apparmor_bwrap](roles/apparmor_bwrap) | `/usr/bin/bwrap` に userns を許可する AppArmor profile |
+| [squid](roles/squid) | egress proxy（SNI allowlist） |
+| [dev_user](roles/dev_user) | 開発ユーザー作成 + authorized_keys（SSM 経由） |
+| [dev_tools](roles/dev_tools) | apt ユーティリティ + mise binary + login shell=zsh |
+| [chezmoi](roles/chezmoi) | chezmoi 導入 + dotfiles 適用（mise install / sheldon lock 込み） |
+| [bwrap_wrappers](roles/bwrap_wrappers) | claude/codex/pnpm の bwrap sandbox wrapper + leak 自テスト |
+
+dotfiles 本体（zsh / git / tmux / mise config / claude・codex の設定）は chezmoi（公開リポ `dev-env-dotfiles`）が管理する。この playbook は system 層・ツール binary 導入・chezmoi 起動を担う。
+
+### AI agent sandbox（bwrap_wrappers）
+
+claude / codex / pnpm を bwrap で隔離して起動する wrapper を `/usr/local/` に配置する。CLI バイナリ自体は mise（dotfiles の `dot_config/mise/config.toml` で版 pin）が `$HOME` 配下に install し、wrapper が `mise which` で実体パスを解決して sandbox 内で起動する。`~/.aws` / `~/.ssh` 等が sandbox 内から不可視であることを [roles/bwrap_wrappers](roles/bwrap_wrappers) の leak 自テストが検証し、leak を検出したら provisioning を fail させる。
 
 ## 秘密情報
 

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# claude 用 base: ANTHROPIC_API_KEY を持ち込み ~/.claude / ~/.claude.json /
+# ~/.config/gh を bind する。隔離核は agent-base (claude / codex 共通) に集約。
+# ~/.claude.json は Claude Code が project history / MCP 設定等を書き出す config で、
+# $HOME 直下にあるため --tmpfs /home でマスクされる → 起動前 touch で persistence 回復。
+set -euo pipefail
+export AGENT_NAME="bwrap-claude-base"
+export AGENT_API_KEY_ENVS="ANTHROPIC_API_KEY"
+export AGENT_RW_BINDS=".claude .claude.json .config/gh"
+export AGENT_RO_BINDS=""
+export AGENT_TOUCH_FILES=".claude.json"
+exec /usr/local/lib/bwrap/agent-base "$@"

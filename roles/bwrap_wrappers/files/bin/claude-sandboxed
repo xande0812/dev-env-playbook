@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# claude-sandboxed (default): ANTHROPIC_API_KEY のみ。調査 / 一般 implement / build / test。
+set -euo pipefail
+exec /usr/local/lib/bwrap/agent-variant \
+  --name claude-sandboxed --base bwrap-claude-base --tool claude \
+  -- "$@"

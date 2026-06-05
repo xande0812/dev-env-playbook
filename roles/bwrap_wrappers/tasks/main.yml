@@ -1,0 +1,64 @@
+---
+# bwrap capability wrapper 群を system path に配置し、leak 自テストで gate する。
+# CLI バイナリ (claude / codex / pnpm) は mise (chezmoi 側) が $HOME 配下に install
+# するため、この role は chezmoi role の後に適用する (leak test の pnpm 検証が
+# `mise which node` を必要とするため)。bubblewrap binary と AppArmor profile は
+# base / apparmor_bwrap role で導入済。
+#
+# 配置先:
+#   /usr/local/lib/bwrap/  … 核スクリプト (agent-base / 各 base / agent-variant /
+#                            pnpm-base / git network blocker / leak-test)。/usr 配下
+#                            なので bwrap の --ro-bind /usr /usr で sandbox 内からも可視。
+#   /usr/local/bin/        … ユーザーが叩く variant (claude-* / codex-* / pnpm-sandboxed)。PATH 上。
+
+- name: Ensure /usr/local/lib/bwrap exists
+  ansible.builtin.file:
+    path: /usr/local/lib/bwrap
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install bwrap core scripts to /usr/local/lib/bwrap
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/lib/bwrap/{{ item | basename }}"
+    owner: root
+    group: root
+    mode: '0755'
+  with_fileglob:
+    - "lib/*"
+
+- name: Install bwrap variant wrappers to /usr/local/bin
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/bin/{{ item | basename }}"
+    owner: root
+    group: root
+    mode: '0755'
+  with_fileglob:
+    - "bin/*"
+
+# systemd --user を常時利用可能にして variant の cgroup limits (MemoryMax 等) を
+# 効かせる。linger 無しでも wrapper は fallback 動作するが、その場合 limits は無効。
+- name: Check systemd linger state for the dev user
+  ansible.builtin.command: "loginctl show-user {{ dev_user_name }} --property=Linger --value"
+  register: linger_state
+  changed_when: false
+  failed_when: false
+
+- name: Enable systemd linger for the dev user
+  ansible.builtin.command: "loginctl enable-linger {{ dev_user_name }}"
+  when: "'yes' not in (linger_state.stdout | default(''))"
+
+# leak 自テスト: secret path の leak / GIT_SSH_COMMAND blocker / worktree 共有 .git /
+# variant の passthrough キー / pnpm sandbox を検証する。非ゼロ終了で provisioning を
+# fail させる (= leak した wrapper を安定運用させない)。human で実行する (検証対象は
+# human の $HOME bind 挙動・mise install)。
+- name: Run bwrap leak self-test (gate provisioning on secret leak)
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command: /usr/local/lib/bwrap/bwrap-leak-test
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+  changed_when: false

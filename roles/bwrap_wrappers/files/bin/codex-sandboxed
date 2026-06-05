@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# codex-sandboxed (default): 認証は OAuth (~/.codex/auth.json)。調査 / 一般 implement。
+# hardening (approval / sandbox) は config.toml ではなく毎回の起動フラグ -c で強制する
+# (codex 所有の writable config.toml に trust を runtime 永続化させるため。-c は
+# config.toml より優先され subcommand に依らず効く = drift しない):
+#   approval_policy=untrusted      : 既知の安全コマンド以外は人の承認を要求 (plan mode 相当)
+#   sandbox_mode=danger-full-access: codex 内蔵 Landlock を無効化し隔離は外側 bwrap に一本化
+set -euo pipefail
+exec /usr/local/lib/bwrap/agent-variant \
+  --name codex-sandboxed --base bwrap-codex-base --tool codex \
+  --app-args "-c approval_policy=untrusted -c sandbox_mode=danger-full-access" \
+  -- "$@"

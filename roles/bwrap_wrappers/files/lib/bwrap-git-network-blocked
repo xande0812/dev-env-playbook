@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# bwrap-wrappers: sandbox 内の git ssh transport を必ず失敗させるための GIT_SSH_COMMAND。
+#
+# base wrapper が GIT_SSH_COMMAND をこの script に固定するので、sandbox 内で
+# ssh transport を使う git operation (push / fetch / pull / clone over git@host:...)
+# は必ず失敗する。policy ではなく capability の deny: settings.json の deny を AI が
+# 回避しても、`! git push` をユーザーが手動で叩いても、ssh が動かないので network op
+# は実行不能。commit / tag の SSH signing は ssh-keygen -Y sign 経由で SSH_AUTH_SOCK を
+# 直接読むため GIT_SSH_COMMAND は無関係 = signing は問題なく動く。
+cat >&2 <<'EOF'
+bwrap-wrappers: git network operations (push / fetch / pull / clone over
+ssh) are blocked inside the sandbox by design.
+
+Run them from a non-sandboxed shell, where you can review the action
+before executing it.
+EOF
+exit 99

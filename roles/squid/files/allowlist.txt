@@ -8,8 +8,19 @@
 #   - write 系 (production への CREATE/UPDATE/DELETE) credential はこの allowlist
 #     経由では渡さない (laptop 側に留める)
 
-# ---- Anthropic ----
+# ---- Anthropic (Claude Code API + docs) ----
 ^api\.anthropic\.com$
+# claude settings.json の WebFetch(domain:docs.anthropic.com) と同時更新。
+^docs\.anthropic\.com$
+
+# ---- OpenAI (codex API + ChatGPT OAuth) ----
+# codex は自身の API 通信で api.openai.com、OAuth ログインで auth.openai.com /
+# chatgpt.com 系に到達する。これらが無いと sandbox 内 codex は応答を得られない
+# (OAuth ログイン自体は sandbox 外で実行)。
+^api\.openai\.com$
+^auth\.openai\.com$
+^chatgpt\.com$
+^.*\.chatgpt\.com$
 
 # ---- GitHub (Claude Code / git / gh CLI) ----
 ^.*\.github\.com$
@@ -40,6 +51,6 @@
 ^docs\.aws\.amazon\.com$
 ^developer\.mozilla\.org$
 ^nodejs\.org$
-^.*\.react\.dev$
+^(.*\.)?react\.dev$
 ^pnpm\.io$
 ^docs\.github\.com$

@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+# bwrap-leak-test — bwrap wrapper の自テスト (旧 nix home.activation.bwrapLeakTest 相当)。
+#
+# typo で secret path が leak した wrapper を検出する唯一の自動チェック。ansible は
+# このスクリプトを become_user: human で実行し、非ゼロ終了で provisioning を fail させる
+# (= leak した状態の wrapper を安定運用させない)。検証内容:
+#   - ~/.aws ~/.ssh ~/.config/op ~/.env* が sandbox 内から不可視 (claude / codex 両 base)
+#   - GIT_SSH_COMMAND が network blocker に固定され exit 99
+#   - git worktree の共有 .git が bind され sandbox 内 commit が通る
+#   - variant が必須 passthrough キー (SSH_AUTH_SOCK / AWS_ACCESS_KEY_ID /
+#     DOTENV_PRIVATE_KEY) を参照
+#   - pnpm-sandboxed: secret 不可視 + ANTHROPIC_API_KEY canary が剥がれる +
+#     ignore-scripts 強制
+#
+# 注: `bash -c '...'` の single quote は意図的。$HOME / $GIT_SSH_COMMAND /
+# $ANTHROPIC_API_KEY 等は host ではなく sandbox 内 bash で展開させたいので、host script
+# 側で展開させない (= SC2016 は false positive として file-level で無効化)。
+# shellcheck disable=SC2016
+set -euo pipefail
+
+bwrap_bin="/usr/bin/bwrap"
+lib="/usr/local/lib/bwrap"
+bin="/usr/local/bin"
+git_bin="/usr/bin/git"
+
+claude_base="$lib/bwrap-claude-base"
+codex_base="$lib/bwrap-codex-base"
+
+for f in "$bwrap_bin" "$claude_base" "$codex_base"; do
+  if [ ! -x "$f" ]; then
+    echo "[bwrap-leak-test] FAIL: required executable missing: $f" >&2
+    exit 1
+  fi
+done
+
+# PROJECT を明示しないと wrapper は $PWD を使う。$PWD が $HOME だとガード (拒否) に
+# なるため、$HOME 配下の安全な subdir を test project として明示する。
+test_project=$(mktemp -d -t bwrap-leak-test.XXXXXX)
+wt_root=$(mktemp -d -t bwrap-wt-test.XXXXXX)
+trap 'rm -rf "$test_project" "$wt_root"' EXIT INT TERM
+
+# git worktree 回帰テスト用の repo を一度だけ作る。signing は base が SSH_AUTH_SOCK を
+# 渡さない (= with-git 専用) ため、ここで検証したいのは「共有 .git が bind され書き込め
+# るか」だけ。commit.gpgsign を per-command で無効化し、署名能力ではなく bind の正しさ
+# だけを isolate して検証する。
+wt_main="$wt_root/main-repo"
+wt_dir="$wt_root/wt"
+git_no_sign=(-c commit.gpgsign=false -c tag.gpgsign=false \
+  -c user.email=leak-test@example.invalid -c user.name=leak-test)
+"$git_bin" init -q "$wt_main"
+"$git_bin" -C "$wt_main" "${git_no_sign[@]}" commit -q --allow-empty -m init
+"$git_bin" -C "$wt_main" worktree add -q "$wt_dir" >/dev/null 2>&1
+
+# secret-leak / GIT_SSH_COMMAND blocker / worktree 共有 .git bind の 3 検証を、
+# claude-base と codex-base の両方に対して走らせる。
+verify_base() {
+  local bwrap_impl="$1" label="$2"
+
+  echo "[bwrap-leak-test] [$label] verifying secret paths are not leaked into sandbox..." >&2
+  local leak_out
+  leak_out=$(PROJECT="$test_project" "$bwrap_impl" -- bash -c '
+    ls -la "$HOME/.aws"        2>&1 || echo NO-AWS
+    ls -la "$HOME/.ssh"        2>&1 || echo NO-SSH
+    ls -la "$HOME/.config/op"  2>&1 || echo NO-OP
+    ls -la "$HOME"/.env*       2>&1 || echo NO-ENV
+  ' 2>&1) || {
+    echo "[bwrap-leak-test] [$label] FAILED: bwrap invocation itself returned non-zero" >&2
+    echo "----- output -----" >&2
+    echo "$leak_out" >&2
+    echo "------------------" >&2
+    return 1
+  }
+
+  local marker
+  for marker in NO-AWS NO-SSH NO-OP NO-ENV; do
+    if ! echo "$leak_out" | grep -q "$marker"; then
+      echo "[bwrap-leak-test] [$label] LEAK: marker $marker missing — secret path is bound into sandbox" >&2
+      echo "----- output -----" >&2
+      echo "$leak_out" >&2
+      echo "------------------" >&2
+      return 1
+    fi
+  done
+  echo "[bwrap-leak-test] [$label] ok (no leak of ~/.aws ~/.ssh ~/.config/op ~/.env*)" >&2
+
+  echo "[bwrap-leak-test] [$label] verifying GIT_SSH_COMMAND is set to network blocker..." >&2
+  local git_ssh_out
+  git_ssh_out=$(PROJECT="$test_project" "$bwrap_impl" -- bash -c '
+    echo "GIT_SSH_COMMAND=$GIT_SSH_COMMAND"
+    "$GIT_SSH_COMMAND" 2>&1 ; echo "exit=$?"
+  ' 2>&1) || true
+  if ! echo "$git_ssh_out" | grep -q "bwrap-git-network-blocked"; then
+    echo "[bwrap-leak-test] [$label] FAIL: GIT_SSH_COMMAND not set to bwrap-git-network-blocked" >&2
+    echo "$git_ssh_out" >&2
+    return 1
+  fi
+  if ! echo "$git_ssh_out" | grep -q "exit=99"; then
+    echo "[bwrap-leak-test] [$label] FAIL: gitNetworkBlocker did not exit 99 as expected" >&2
+    echo "$git_ssh_out" >&2
+    return 1
+  fi
+  echo "[bwrap-leak-test] [$label] ok (git ssh transport is blocked)" >&2
+
+  echo "[bwrap-leak-test] [$label] verifying git worktree shared .git is bound into sandbox..." >&2
+  local wt_out
+  wt_out=$(PROJECT="$wt_dir" "$bwrap_impl" -- "$git_bin" "${git_no_sign[@]}" \
+    commit -q --allow-empty -m "sandbox-commit-$label" 2>&1) || {
+    echo "[bwrap-leak-test] [$label] FAIL: git commit inside worktree sandbox returned non-zero" >&2
+    echo "  (共有 .git が bind されていない可能性 — agent-base の git_extra_binds を確認)" >&2
+    echo "$wt_out" >&2
+    return 1
+  }
+  if echo "$wt_out" | grep -qi "not a git repository"; then
+    echo "[bwrap-leak-test] [$label] FAIL: worktree shared .git not bound into sandbox" >&2
+    echo "$wt_out" >&2
+    return 1
+  fi
+  echo "[bwrap-leak-test] [$label] ok (git commit works in worktree sandbox)" >&2
+}
+
+verify_base "$claude_base" claude
+verify_base "$codex_base"  codex
+
+# variant wrapper script に必要な passthrough キーが正しく列挙されていることを grep で
+# 静的検証。typo で env が forward されない事故を防ぐ。
+echo "[bwrap-leak-test] verifying variant wrappers reference required keys..." >&2
+
+check_variant() {
+  local script="$1" needle="$2"
+  if [ ! -r "$script" ]; then
+    echo "[bwrap-leak-test] FAIL: variant script $script not readable" >&2
+    return 1
+  fi
+  if ! grep -qF -- "$needle" "$script"; then
+    echo "[bwrap-leak-test] FAIL: $script does not mention $needle" >&2
+    return 1
+  fi
+}
+
+check_variant "$bin/claude-with-git"     "SSH_AUTH_SOCK"      || exit 1
+check_variant "$bin/claude-with-aws-ro"  "AWS_ACCESS_KEY_ID"  || exit 1
+check_variant "$bin/claude-with-dotenv"  "DOTENV_PRIVATE_KEY" || exit 1
+check_variant "$bin/codex-with-git"      "SSH_AUTH_SOCK"      || exit 1
+check_variant "$bin/codex-with-aws-ro"   "AWS_ACCESS_KEY_ID"  || exit 1
+check_variant "$bin/codex-with-dotenv"   "DOTENV_PRIVATE_KEY" || exit 1
+
+echo "[bwrap-leak-test] variant wrappers ok" >&2
+
+# -- pnpm-sandboxed (install 系 wrapper) の検証 --------------------------------
+pnpm_impl="$lib/pnpm-base"
+if [ -x "$pnpm_impl" ]; then
+  echo "[bwrap-leak-test] verifying pnpm sandbox does not leak secret paths..." >&2
+  pnpm_leak=$(PROJECT="$test_project" "$pnpm_impl" -- bash -c '
+    ls -la "$HOME/.aws"        2>&1 || echo NO-AWS
+    ls -la "$HOME/.ssh"        2>&1 || echo NO-SSH
+    ls -la "$HOME/.config/op"  2>&1 || echo NO-OP
+    ls -la "$HOME"/.env*       2>&1 || echo NO-ENV
+  ' 2>&1) || {
+    echo "[bwrap-leak-test] FAILED: pnpm-base invocation returned non-zero" >&2
+    echo "$pnpm_leak" >&2
+    exit 1
+  }
+  for marker in NO-AWS NO-SSH NO-OP NO-ENV; do
+    if ! echo "$pnpm_leak" | grep -q "$marker"; then
+      echo "[bwrap-leak-test] LEAK: pnpm sandbox missing $marker — secret path bound" >&2
+      echo "$pnpm_leak" >&2
+      exit 1
+    fi
+  done
+
+  # install 系には ANTHROPIC_API_KEY を渡さないのが pnpm wrapper の要。canary を host
+  # env に注入しても --clearenv で剥がれることを動的検証。
+  echo "[bwrap-leak-test] verifying ANTHROPIC_API_KEY is stripped in pnpm sandbox..." >&2
+  key_out=$(ANTHROPIC_API_KEY="leak-canary-do-not-forward" PROJECT="$test_project" \
+    "$pnpm_impl" -- bash -c 'echo "KEY=[${ANTHROPIC_API_KEY:-UNSET}]"' 2>&1) || true
+  if echo "$key_out" | grep -q "leak-canary-do-not-forward"; then
+    echo "[bwrap-leak-test] LEAK: ANTHROPIC_API_KEY forwarded into pnpm sandbox" >&2
+    echo "$key_out" >&2
+    exit 1
+  fi
+  if ! echo "$key_out" | grep -q "KEY=\[UNSET\]"; then
+    echo "[bwrap-leak-test] FAIL: unexpected ANTHROPIC_API_KEY state in pnpm sandbox" >&2
+    echo "$key_out" >&2
+    exit 1
+  fi
+
+  # lifecycle script が常時 OFF であること。
+  echo "[bwrap-leak-test] verifying pnpm sandbox enforces ignore-scripts..." >&2
+  scripts_out=$(PROJECT="$test_project" "$pnpm_impl" -- bash -c \
+    'echo "IS=[${npm_config_ignore_scripts:-UNSET}]"' 2>&1) || true
+  if ! echo "$scripts_out" | grep -q "IS=\[true\]"; then
+    echo "[bwrap-leak-test] FAIL: npm_config_ignore_scripts not enforced in pnpm sandbox" >&2
+    echo "$scripts_out" >&2
+    exit 1
+  fi
+
+  # shim が base を経由していること + base に ignore-scripts 強制が残っていることを
+  # 静的にも担保 (上の動的 IS=[true] と二重)。
+  check_variant "$bin/pnpm-sandboxed" "pnpm-base"               || exit 1
+  check_variant "$lib/pnpm-base"      "npm_config_ignore_scripts" || exit 1
+  echo "[bwrap-leak-test] pnpm-sandboxed ok" >&2
+fi
+
+echo "[bwrap-leak-test] ALL CHECKS PASSED" >&2

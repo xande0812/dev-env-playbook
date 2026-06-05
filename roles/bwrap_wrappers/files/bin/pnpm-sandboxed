@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# pnpm-sandboxed: pnpm-base 経由で pnpm を起動する shim。systemd-run --user --scope で
+# cgroup limits をかける (無ければ fallback)。pnpm は mise で版管理。
+set -euo pipefail
+
+pnpm_bin=$(mise which pnpm 2>/dev/null) || {
+  echo "pnpm-sandboxed: 'mise which pnpm' failed — pnpm が mise で未 install の可能性。" >&2
+  exit 127
+}
+
+cgroup_limits="--property=MemoryMax=4G --property=CPUQuota=400% --property=TasksMax=1024"
+
+# shellcheck disable=SC2086
+if systemctl --user is-system-running >/dev/null 2>&1 \
+  || { [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "${XDG_RUNTIME_DIR}/systemd/private" ]; }; then
+  exec systemd-run --user --scope --quiet $cgroup_limits \
+    -- /usr/local/lib/bwrap/pnpm-base -- "$pnpm_bin" "$@"
+else
+  echo "pnpm-sandboxed: systemd --user unavailable, running without cgroup limits" >&2
+  exec /usr/local/lib/bwrap/pnpm-base -- "$pnpm_bin" "$@"
+fi

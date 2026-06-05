@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# claude-with-dotenv: + DOTENV_PRIVATE_KEY*。live app 起動 (dotenvx 復号)。
+# per-environment 鍵 (DOTENV_PRIVATE_KEY / ..._PRODUCTION / ..._STAGING 等) を prefix で
+# 動的に拾う。
+set -euo pipefail
+exec /usr/local/lib/bwrap/agent-variant \
+  --name claude-with-dotenv --base bwrap-claude-base --tool claude \
+  --passthrough "--passthrough-env-prefix DOTENV_PRIVATE_KEY" \
+  -- "$@"

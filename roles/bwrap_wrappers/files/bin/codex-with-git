@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# codex-with-git: + SSH_AUTH_SOCK。commit signing 専用 (push 用ではない)。
+set -euo pipefail
+exec /usr/local/lib/bwrap/agent-variant \
+  --name codex-with-git --base bwrap-codex-base --tool codex \
+  --passthrough "--passthrough-socket-from-env SSH_AUTH_SOCK" \
+  --app-args "-c approval_policy=untrusted -c sandbox_mode=danger-full-access" \
+  -- "$@"

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# claude-with-git: + SSH_AUTH_SOCK。commit signing 専用 (push 用ではない)。
+# signing は ssh-keygen -Y sign 経由で SSH_AUTH_SOCK を直接読む。push/fetch は base が
+# GIT_SSH_COMMAND を fail に固定するため不可。
+set -euo pipefail
+exec /usr/local/lib/bwrap/agent-variant \
+  --name claude-with-git --base bwrap-claude-base --tool claude \
+  --passthrough "--passthrough-socket-from-env SSH_AUTH_SOCK" \
+  -- "$@"

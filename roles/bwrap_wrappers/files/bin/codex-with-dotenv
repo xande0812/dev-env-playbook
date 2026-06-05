@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# codex-with-dotenv: + DOTENV_PRIVATE_KEY*。live app 起動 (dotenvx 復号)。
+set -euo pipefail
+exec /usr/local/lib/bwrap/agent-variant \
+  --name codex-with-dotenv --base bwrap-codex-base --tool codex \
+  --passthrough "--passthrough-env-prefix DOTENV_PRIVATE_KEY" \
+  --app-args "-c approval_policy=untrusted -c sandbox_mode=danger-full-access" \
+  -- "$@"

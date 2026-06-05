@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# claude-with-aws-ro: + AWS_*。別アカウントの read-only 確認用。
+# write 系 credential はこの経路に載せない運用規律 (squid allowlist のコメント参照)。
+set -euo pipefail
+exec /usr/local/lib/bwrap/agent-variant \
+  --name claude-with-aws-ro --base bwrap-claude-base --tool claude \
+  --passthrough "--passthrough-env AWS_ACCESS_KEY_ID --passthrough-env AWS_SECRET_ACCESS_KEY --passthrough-env AWS_SESSION_TOKEN --passthrough-env AWS_DEFAULT_REGION --passthrough-env AWS_REGION --passthrough-env AWS_PROFILE" \
+  -- "$@"

@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# pnpm-base: install 系の別系統 sandbox 核 (agent-base は意図的に流用しない)。
+# untrusted な npm パッケージコードを動かす install には、ANTHROPIC_API_KEY や
+# ~/.claude / gh 認証を持ち込む claude-base は不適切なため別実装にする。設計思想は同じ:
+#   - --clearenv で env を破棄、install に必要な最小限だけ復活
+#   - API キー / gh 認証 / secret 系は一切渡さない
+#   - lifecycle script は npm_config_ignore_scripts=true で常時 OFF
+#     (postinstall = supply-chain の主要経路を塞ぐ。uv の only-binary と同じ二重防御)
+#   - registry 以外への通信は squid 透過 proxy で squash (net namespace は unshare
+#     しない = host の iptables owner-match が効く。npm registry は squid allowlist 済)
+# pnpm の content-addressable store と cache だけ $HOME 配下を writable bind して
+# install を永続化する (--tmpfs /home でマスクされるため明示 bind しないと毎回 cold
+# cache + session 終了で蒸発する)。
+#
+# 使い方: pnpm-base -- COMMAND [ARGS...]
+set -euo pipefail
+
+bwrap_bin="/usr/bin/bwrap"
+blocker="/usr/local/lib/bwrap/bwrap-git-network-blocked"
+name="pnpm-base"
+
+project="${PROJECT:-$PWD}"
+
+if [ ! -x "$bwrap_bin" ]; then
+  echo "$name: $bwrap_bin not found or not executable" >&2
+  exit 127
+fi
+
+# agent-base と同じ project guard: $HOME 自身 / 祖先を bind すると secret が leak する。
+home_real=$(realpath -e "$HOME" 2>/dev/null || echo "$HOME")
+if [ ! -e "$project" ]; then
+  echo "$name: project '$project' does not exist" >&2
+  exit 2
+fi
+project_real=$(realpath -e "$project")
+if [ "$project_real" = "$home_real" ]; then
+  echo "$name: refusing to use \$HOME ($home_real) as project root" >&2
+  echo "  cd into a subdirectory of \$HOME, or set PROJECT=<subdir>." >&2
+  exit 2
+fi
+case "$home_real"/ in
+  "$project_real"/*)
+    echo "$name: refusing — project '$project_real' is an ancestor of \$HOME" >&2
+    exit 2
+    ;;
+esac
+
+# 呼び出し側は `pnpm-base -- COMMAND...` 形式。base 自身が exec で `-- "$@"` として
+# bwrap separator を付けるため、先頭の `--` を 1 つ剥がす。
+if [ "${1:-}" = "--" ]; then
+  shift
+fi
+[ "$#" -gt 0 ] || { echo "$name: no command specified" >&2; exit 2; }
+
+pnpm_store="$HOME/.local/share/pnpm/store"
+pnpm_cache="$HOME/.cache/pnpm"
+# bind 先が無いと bwrap が fail するので host 側で先に作る。
+mkdir -p "$pnpm_store" "$pnpm_cache"
+
+# node は mise install (= $HOME 配下)。base が ro-bind する ~/.local/share/mise 経由で
+# sandbox 内から到達。node の bin dir を PATH 前置する。
+# `$(dirname "$(mise which node)")` と一行にすると mise 失敗時に空文字列が dirname に
+# 渡り `.` (cwd) を exit 0 で返すため、PATH に cwd が混入し診断も握り潰される。解決を
+# 分離して失敗を観測可能にする。
+node_path=$(mise which node 2>/dev/null) || {
+  echo "$name: 'mise which node' failed — node が mise で未 install の可能性。" >&2
+  exit 127
+}
+node_bin=$(dirname "$node_path")
+
+exec "$bwrap_bin" \
+  --clearenv \
+  --setenv HOME "$HOME" \
+  --setenv PATH "$node_bin:$PATH" \
+  --setenv TERM "${TERM:-xterm-256color}" \
+  --setenv LANG "${LANG:-C.UTF-8}" \
+  --setenv GIT_SSH_COMMAND "$blocker" \
+  --setenv npm_config_ignore_scripts "true" \
+  --setenv npm_config_store_dir "$pnpm_store" \
+  --ro-bind /usr /usr \
+  --ro-bind /etc /etc \
+  --ro-bind-try /opt /opt \
+  --ro-bind /bin /bin \
+  --ro-bind /sbin /sbin \
+  --ro-bind /lib /lib \
+  --ro-bind-try /lib64 /lib64 \
+  --ro-bind-try /run/systemd/resolve /run/systemd/resolve \
+  --ro-bind-try "$HOME/.local/share/mise" "$HOME/.local/share/mise" \
+  --ro-bind-try "$HOME/.config/mise" "$HOME/.config/mise" \
+  --proc /proc \
+  --dev /dev \
+  --tmpfs /tmp \
+  --tmpfs /home \
+  --bind "$project" "$project" \
+  --bind "$pnpm_store" "$pnpm_store" \
+  --bind "$pnpm_cache" "$pnpm_cache" \
+  --chdir "$project" \
+  --unshare-pid \
+  --unshare-uts \
+  --unshare-ipc \
+  --new-session \
+  --die-with-parent \
+  -- "$@"

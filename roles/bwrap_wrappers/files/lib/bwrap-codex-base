@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# codex 用 base: 認証は ChatGPT OAuth (~/.codex/auth.json) なので API キー env は
+# 渡さない。CODEX_HOME 既定の ~/.codex (config.toml + auth.json) と、commit/PR 操作で
+# 使う ~/.config/gh を bind する。~/.codex/auth.json は agent 自身の service credential で
+# ~/.aws 等の汎用 secret とは別扱い (claude の ~/.claude/.credentials.json と同列)。
+# 隔離核は agent-base (claude / codex 共通) に集約。
+set -euo pipefail
+export AGENT_NAME="bwrap-codex-base"
+export AGENT_API_KEY_ENVS=""
+export AGENT_RW_BINDS=".codex .config/gh"
+export AGENT_RO_BINDS=""
+export AGENT_TOUCH_FILES=""
+exec /usr/local/lib/bwrap/agent-base "$@"

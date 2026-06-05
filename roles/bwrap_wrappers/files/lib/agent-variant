@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# variant 共通 shim (旧 nix mkAgentVariant 相当)。base wrapper 経由で CLI を sandbox
+# 起動し、systemd-run --user --scope で cgroup limits をかける (無ければ fallback)。
+#
+# 使い方:
+#   agent-variant --name NAME --base BASE --tool TOOL \
+#     [--passthrough "PASSTHROUGH ARGS"] [--app-args "APP ARGS"] -- "$@"
+#
+#   NAME         エラー表示名 (例 claude-with-git)
+#   BASE         /usr/local/lib/bwrap/ 配下の base script 名 (bwrap-claude-base 等)
+#   TOOL         mise で解決する CLI 名 (claude / codex)
+#   PASSTHROUGH  base に渡す --passthrough-* オプション列 (空白区切り, 任意)
+#   APP_ARGS     CLI バイナリにユーザー引数より前に渡す固定フラグ (codex hardening 等)
+#
+# CLI バイナリは mise が $HOME 配下に install する。shim ではなく実体パスを mise で
+# 解決し、base が ro-bind した ~/.local/share/mise 経由で sandbox 内からも同じ絶対
+# パスで到達させる。PASSTHROUGH / APP_ARGS は意図的に word-split する (各 token に
+# 空白・クォートを含まない前提。SC2086)。
+set -euo pipefail
+
+name=""; base=""; tool=""; passthrough=""; appargs=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --name) name="$2"; shift 2 ;;
+    --base) base="$2"; shift 2 ;;
+    --tool) tool="$2"; shift 2 ;;
+    --passthrough) passthrough="$2"; shift 2 ;;
+    --app-args) appargs="$2"; shift 2 ;;
+    --) shift; break ;;
+    *) echo "agent-variant: unexpected arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+base_impl="/usr/local/lib/bwrap/$base"
+if [ ! -x "$base_impl" ]; then
+  echo "${name:-agent-variant}: base '$base_impl' not found or not executable" >&2
+  exit 127
+fi
+
+app_bin=$(mise which "$tool" 2>/dev/null) || {
+  echo "${name:-agent-variant}: 'mise which $tool' failed — $tool が mise で未 install の可能性。" >&2
+  echo "  chezmoi apply で mise install が走っているか確認。" >&2
+  exit 127
+}
+
+cgroup_limits="--property=MemoryMax=4G --property=CPUQuota=400% --property=TasksMax=1024"
+
+# systemd --user が無い環境 (cron, non-login ssh 等) では systemd-run --user が固まる/
+# 失敗するので fallback で bwrap 単体実行 (cgroup limits 無し)。
+# shellcheck disable=SC2086
+if systemctl --user is-system-running >/dev/null 2>&1 \
+  || { [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "${XDG_RUNTIME_DIR}/systemd/private" ]; }; then
+  exec systemd-run --user --scope --quiet $cgroup_limits \
+    -- "$base_impl" $passthrough -- "$app_bin" $appargs "$@"
+else
+  echo "${name:-agent-variant}: systemd --user unavailable, running without cgroup limits" >&2
+  exec "$base_impl" $passthrough -- "$app_bin" $appargs "$@"
+fi
