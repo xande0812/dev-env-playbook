@@ -1,0 +1,12 @@
+# x86_64 (amd64) 固有の値。自宅 mini-PC (Intel/AMD) はこちら。
+# site.yml の pre_tasks が ansible_architecture == 'x86_64' のとき include する。
+
+# AWS CLI v2 installer のアーキテクチャ識別子 (awscli-exe-linux-<arch>.zip)。
+aws_cli_arch: x86_64
+
+# mise apt repo の architectures 指定。
+mise_arch: amd64
+
+# chezmoi .deb のアーキテクチャ識別子と sha256 (GitHub release の checksums.txt より)。
+chezmoi_arch: amd64
+chezmoi_deb_sha256: "5e5203411292a25c3014114055e4a89669887c3bfd8893b152f1824d08ec4b98"

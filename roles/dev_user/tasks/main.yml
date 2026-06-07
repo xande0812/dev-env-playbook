@@ -36,9 +36,13 @@
     group: "{{ dev_user_name }}"
     mode: '0700'
 
-# 公開鍵は公開リポに置かず、instance role 権限で SSM Parameter Store から取得する。
-# (CDK 側で instance role に ssm:GetParameter を付与済み)
-- name: Fetch authorized_keys from SSM Parameter Store
+# authorized_keys の取得元は key_source で分岐する (vars/env-*.yml)。
+#   ec2  : 公開鍵は公開リポに置かず、instance role 権限で SSM Parameter Store から取得
+#          (CDK 側で instance role に ssm:GetParameter を付与済み)。
+#   home : instance role が無いため、git 管理の公開鍵 (dev_user_pubkey) を直接配置。
+#          公開鍵なので公開リポに置いてよい。
+- name: Fetch authorized_keys from SSM Parameter Store (ec2)
+  when: key_source == 'ssm'
   ansible.builtin.command: >
     aws ssm get-parameter
     --name {{ authorized_keys_ssm_param }}
@@ -48,9 +52,19 @@
   register: fetched_authorized_keys
   changed_when: false
 
-- name: Install authorized_keys
+- name: Install authorized_keys from SSM (ec2)
+  when: key_source == 'ssm'
   ansible.builtin.copy:
     content: "{{ fetched_authorized_keys.stdout }}\n"
+    dest: "/home/{{ dev_user_name }}/.ssh/authorized_keys"
+    owner: "{{ dev_user_name }}"
+    group: "{{ dev_user_name }}"
+    mode: '0600'
+
+- name: Install authorized_keys from git-managed pubkey (home)
+  when: key_source == 'file'
+  ansible.builtin.copy:
+    content: "{{ dev_user_pubkey }}\n"
     dest: "/home/{{ dev_user_name }}/.ssh/authorized_keys"
     owner: "{{ dev_user_name }}"
     group: "{{ dev_user_name }}"

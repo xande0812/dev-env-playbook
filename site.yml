@@ -1,6 +1,8 @@
 # dev-server 環境構築 playbook (ansible-pull / localhost)
 #
-# 対象ホスト上で `ansible-pull` により localhost に適用される。
+# 対象ホスト上で `ansible-pull` により localhost に適用される。EC2 / 自宅サーバの
+# どちらでも同じ playbook を使う。環境差は target_env (env-*.yml) と
+# ansible_architecture (arch-*.yml) の 2 軸で吸収する。
 # 役割分担: ansible = system 層 + ツール binary 導入 + chezmoi 起動。
 #           dotfiles 本体は chezmoi (公開リポ dev-env-dotfiles) が管理する。
 - name: dev-server environment (pull / localhost)
@@ -8,13 +10,51 @@
   connection: local
   become: true
   gather_facts: true
+
+  pre_tasks:
+    # 環境判定: 明示の -e target_env が最優先。無ければ DMI vendor で自動判定し、
+    # Amazon EC2 なら ec2、それ以外 (自宅 mini-PC 等) は home とする。
+    # これにより EC2 側の既存 ansible-pull コマンドは無変更で ec2 として動く。
+    - name: Determine target environment
+      ansible.builtin.set_fact:
+        target_env: >-
+          {{ target_env
+             | default('ec2' if ansible_system_vendor == 'Amazon EC2' else 'home', true) }}
+
+    - name: Show resolved target environment and architecture
+      ansible.builtin.debug:
+        msg: "target_env={{ target_env }} arch={{ ansible_architecture }}"
+
+    # 環境固有 / アーキテクチャ固有の変数を読み込む。group_vars/all.yml の共通値を
+    # 上書き・補完する。対応ファイルが無い arch は明示的に fail させる。
+    - name: Load environment-specific vars
+      ansible.builtin.include_vars: "vars/env-{{ target_env }}.yml"
+
+    - name: Load architecture-specific vars
+      ansible.builtin.include_vars: "vars/arch-{{ ansible_architecture }}.yml"
+
+    # home 必須値の fail-fast 検証。特に lan_subnet が REPLACE sentinel のままだと
+    # ufw enable 後に SSH を全遮断し、復旧にローカルコンソールが要る。role 実行前に止める。
+    - name: Validate home-required vars are configured
+      when: target_env == 'home'
+      ansible.builtin.assert:
+        that:
+          - dev_user_pubkey is defined and 'REPLACE' not in dev_user_pubkey
+          - lan_subnet is defined and 'REPLACE' not in lan_subnet
+        fail_msg: >-
+          vars/env-home.yml の dev_user_pubkey と lan_subnet を実値に置換してください
+          (lan_subnet の誤りは ufw enable 後に SSH を全遮断します)。
+        quiet: true
+
   roles:
-    - base            # apt 基本パッケージ + AWS CLI v2
+    - base            # apt 基本パッケージ + AWS CLI v2 (arch 依存)
     - sshd_hardening  # sshd の公開鍵認証強制 + AcceptEnv
+    - role: ufw       # インバウンド制御 (旧 EC2 Security Group の代替)。自宅のみ。
+      when: target_env == 'home'
     - apparmor_bwrap  # bwrap に userns を許可する AppArmor profile
     - squid           # egress proxy (SNI allowlist)
-    - dev_user        # 開発ユーザー作成 + authorized_keys (SSM 経由)
-    - dev_tools       # apt ユーティリティ + mise binary + login shell=zsh
-    - chezmoi         # chezmoi 導入 + dotfiles 適用 (mise install/sheldon lock 込み)
+    - dev_user        # 開発ユーザー作成 + authorized_keys (ec2=SSM / home=git の公開鍵)
+    - dev_tools       # apt ユーティリティ + mise binary (arch 依存) + login shell=zsh
+    - chezmoi         # chezmoi 導入 (arch 依存) + dotfiles 適用 (mise install/sheldon lock 込み)
     - bwrap_wrappers  # claude/codex/pnpm の bwrap sandbox wrapper + leak 自テスト
                       # (chezmoi の後: leak test の pnpm 検証が mise install 済 node を使う)

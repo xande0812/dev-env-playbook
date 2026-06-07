@@ -1,0 +1,19 @@
+# 自宅サーバ (mini-PC) 環境固有の変数。
+# target_env == 'home' のとき site.yml の pre_tasks が include する。
+# EC2 以外のホストでは自動でこちらになる (明示する場合は -e target_env=home)。
+
+# dev_user の authorized_keys 取得元。自宅には instance role が無いため、
+# git 管理の公開鍵 (dev_user_pubkey) を直接配置する。公開鍵なので公開リポに置いてよい。
+key_source: file
+
+# 開発ユーザーの SSH 公開鍵。dev-server-bootstrap の autoinstall で投入する鍵と
+# 同一にすること (login 用)。秘密鍵はノート PC 側にのみ置く。
+# ★要置換: 自分の公開鍵に差し替える (例: cat ~/.ssh/id_ed25519.pub の出力)。
+dev_user_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOEMGicFMxJxaf7jUcyWoiGMzs/W9dcu4mpC4uqvISgu"
+
+# ufw でインバウンド SSH を許可するサブネット (旧 EC2 Security Group の代替)。
+# ノートPC との「有線直結リンク」専用サブネット。WiFi(家庭LAN)側からの SSH は
+# このサブネットに含まれないため default deny で弾かれる = ネットワーク経由 SSH 禁止。
+# autoinstall の ethernets.lan-direct (192.168.50.1/24) と同一サブネットにすること。
+# より厳しくするならノートPC の単一 IP に絞る (例 192.168.50.2/32)。
+lan_subnet: "192.168.50.0/24"

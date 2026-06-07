@@ -1,0 +1,16 @@
+# EC2 (AWS) 環境固有の変数。
+# target_env == 'ec2' のとき site.yml の pre_tasks が include する。
+# ホストが Amazon EC2 (ansible_system_vendor == 'Amazon EC2') なら自動でこちらになる。
+
+# 各種 AWS 操作のリージョン。
+aws_region: us-east-1
+
+# 開発ユーザーの authorized_keys を格納した SSM Parameter (String) の名前。
+# 公開鍵そのものはこのリポに置かず、instance role 権限でここから取得する。
+# 【契約】この名前は、インスタンスの IAM role に read 権限が付与された
+# パラメータ名と一致させること。インフラ側で環境プレフィックス (例 dev) を
+# 変える場合は、この値も同じプレフィックスに揃える必要がある。
+authorized_keys_ssm_param: /dev/dev-server/authorized-keys
+
+# dev_user の authorized_keys 取得元。EC2 は instance role 経由で SSM から取る。
+key_source: ssm

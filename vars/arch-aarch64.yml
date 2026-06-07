@@ -1,0 +1,12 @@
+# aarch64 (arm64) 固有の値。EC2 Graviton はこちら。
+# site.yml の pre_tasks が ansible_architecture == 'aarch64' のとき include する。
+
+# AWS CLI v2 installer のアーキテクチャ識別子 (awscli-exe-linux-<arch>.zip)。
+aws_cli_arch: aarch64
+
+# mise apt repo の architectures 指定。
+mise_arch: arm64
+
+# chezmoi .deb のアーキテクチャ識別子と sha256 (GitHub release の checksums.txt より)。
+chezmoi_arch: arm64
+chezmoi_deb_sha256: "3d006be5cad96688a8e3870cd79e87be2e93e85197014f0603bacb38c5c4f417"

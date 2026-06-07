@@ -1,0 +1,52 @@
+---
+# 自宅サーバのインバウンド制御。EC2 では Security Group (CDK) が担っていた層を、
+# 自宅では host firewall (ufw) で代替する。target_env == 'home' のときだけ適用する
+# (site.yml の role 条件)。
+#
+# 方針: incoming は default deny、SSH (22/tcp) のみ自宅 LAN サブネットから許可。
+#       outgoing は allow (egress の絞り込みは squid allowlist が別途担う)。
+#
+# 【LAN 限定の意図】SSH 許可元を lan_subnet に絞るため、LAN 外 (VPN/中継 IP 等) から
+# provisioning 中に再実行すると enable 後にその接続が切れる。自宅 LAN 内 SSH 前提の
+# 設計なので意図通り。lan_subnet が誤っていると SSH を全遮断するため、site.yml の
+# pre_tasks で REPLACE sentinel のまま実行されていないか fail-fast 検証している。
+#
+# 実装: 他 role と揃えて collection 非依存にするため community.general.ufw ではなく
+#       ufw CLI を ansible.builtin.command で叩く (ufw コマンド自体が冪等)。
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+# enable の前に SSH 許可を入れてロックアウトを防ぐ。LAN サブネットからのみ許可する。
+# 既存ルールがあると ufw は "Skipping adding existing rule" を出して no-op になる。
+- name: Allow SSH from the home LAN subnet
+  ansible.builtin.command: "ufw allow from {{ lan_subnet }} to any port 22 proto tcp"
+  register: ufw_allow_ssh
+  changed_when: "'Skipping adding existing rule' not in ufw_allow_ssh.stdout"
+
+# default policy は変更時のみ "changed to" を出力する (不変時は出さない)。
+- name: Default deny incoming
+  ansible.builtin.command: ufw default deny incoming
+  register: ufw_deny_in
+  changed_when: "'changed to' in ufw_deny_in.stdout"
+
+- name: Default allow outgoing
+  ansible.builtin.command: ufw default allow outgoing
+  register: ufw_allow_out
+  changed_when: "'changed to' in ufw_allow_out.stdout"
+
+# 既に active なら再 enable しない (冪等)。inactive のときだけ有効化する。
+- name: Check ufw status
+  ansible.builtin.command: ufw status
+  register: ufw_status
+  changed_when: false
+
+- name: Enable ufw
+  ansible.builtin.command: ufw --force enable
+  when: "'Status: active' not in ufw_status.stdout"
+  changed_when: true

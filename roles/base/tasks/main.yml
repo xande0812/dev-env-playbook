@@ -18,19 +18,21 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
 
-# Ubuntu 既定の awscli は v1 系で古いため、公式 v2 (aarch64) を入れる。
+# Ubuntu 既定の awscli は v1 系で古いため、公式 v2 を入れる。
+# arch は vars/arch-*.yml の aws_cli_arch (x86_64 / aarch64)。agent の aws-ro 確認で
+# 自宅でも使うため、EC2 / home 両方で導入する。
 - name: Check whether aws CLI is present
   ansible.builtin.command: aws --version
   register: aws_version_check
   changed_when: false
   failed_when: false
 
-- name: Install AWS CLI v2 (aarch64)
+- name: Install AWS CLI v2 ({{ aws_cli_arch }})
   when: aws_version_check.rc != 0
   block:
     - name: Download AWS CLI v2 installer
       ansible.builtin.get_url:
-        url: https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip
+        url: "https://awscli.amazonaws.com/awscli-exe-linux-{{ aws_cli_arch }}.zip"
         dest: /tmp/awscliv2.zip
         mode: '0644'
 

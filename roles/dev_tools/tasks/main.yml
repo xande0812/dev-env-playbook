@@ -41,7 +41,7 @@
     uris: https://mise.jdx.dev/deb
     suites: stable
     components: [main]
-    architectures: [arm64]
+    architectures: ["{{ mise_arch }}"]
     signed_by: /etc/apt/keyrings/mise.asc
     state: present
 

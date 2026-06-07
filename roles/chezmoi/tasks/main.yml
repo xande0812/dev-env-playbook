@@ -2,7 +2,8 @@
 # chezmoi を導入し、公開 dotfiles リポを開発ユーザーのホームに適用する。
 # dotfiles 本体・mise/sheldon の設定・mise install/sheldon lock の run スクリプトは
 # すべて dotfiles リポ (chezmoi) 側にある。ansible は binary 導入と起動だけを担う。
-# chezmoi は Ubuntu 26.04 apt に無いため、GitHub release の .deb を pin + sha256 で導入。
+# chezmoi は Ubuntu apt に無いため、GitHub release の .deb を pin + sha256 で導入。
+# arch (amd64 / arm64) と sha256 は vars/arch-*.yml が持つ。
 - name: Check installed chezmoi version
   ansible.builtin.command: chezmoi --version
   register: chezmoi_installed
@@ -14,19 +15,19 @@
   block:
     - name: Download chezmoi .deb (pinned + checksum)
       ansible.builtin.get_url:
-        url: "https://github.com/twpayne/chezmoi/releases/download/v{{ chezmoi_version }}/chezmoi_{{ chezmoi_version }}_linux_arm64.deb"
-        dest: "/tmp/chezmoi_{{ chezmoi_version }}_linux_arm64.deb"
+        url: "https://github.com/twpayne/chezmoi/releases/download/v{{ chezmoi_version }}/chezmoi_{{ chezmoi_version }}_linux_{{ chezmoi_arch }}.deb"
+        dest: "/tmp/chezmoi_{{ chezmoi_version }}_linux_{{ chezmoi_arch }}.deb"
         checksum: "sha256:{{ chezmoi_deb_sha256 }}"
         mode: '0644'
 
     - name: Install chezmoi .deb
       ansible.builtin.apt:
-        deb: "/tmp/chezmoi_{{ chezmoi_version }}_linux_arm64.deb"
+        deb: "/tmp/chezmoi_{{ chezmoi_version }}_linux_{{ chezmoi_arch }}.deb"
 
   always:
     - name: Remove chezmoi .deb installer
       ansible.builtin.file:
-        path: "/tmp/chezmoi_{{ chezmoi_version }}_linux_arm64.deb"
+        path: "/tmp/chezmoi_{{ chezmoi_version }}_linux_{{ chezmoi_arch }}.deb"
         state: absent
 
 # 初回のみ clone。以降は pull タスクで更新する。

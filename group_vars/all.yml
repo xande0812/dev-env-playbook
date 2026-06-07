@@ -1,27 +1,20 @@
-# 全ホスト共通変数
-# このリポは公開。秘密値は置かない（SSM Parameter Store 等から実行時取得する）。
-
-# 各種 AWS 操作のリージョン
-aws_region: us-east-1
+# 全ホスト共通変数（EC2 / 自宅サーバ 両環境で共有する値のみ）
+#
+# 環境依存値 (aws_region / authorized_keys_ssm_param 等) は vars/env-<target_env>.yml、
+# アーキテクチャ依存値 (chezmoi の sha256 等) は vars/arch-<ansible_architecture>.yml に
+# 分離し、site.yml の pre_tasks で target_env を判定して include する。
 
 # 開発ユーザー名。このリポを特定の個人に紐付けないため汎用名にしている。
 dev_user_name: human
 
-# 開発ユーザーの authorized_keys を格納した SSM Parameter (String) の名前。
-# 公開鍵そのものはこのリポに置かず、ここから取得する。
-# 【契約】この名前は、インスタンスの IAM role に read 権限が付与された
-# パラメータ名と一致させること。インフラ側で環境プレフィックス (例 dev) を
-# 変える場合は、この値も同じプレフィックスに揃える必要がある。
-authorized_keys_ssm_param: /dev/dev-server/authorized-keys
-
 # dotfiles (chezmoi source) の公開リポ。chezmoi が clone/apply する。
 dotfiles_repo_url: https://github.com/xande0812/dev-env-dotfiles.git
 
-# chezmoi はプロビジョニング側のメタツール (mise 管理にはしない)。Ubuntu 26.04 の
-# apt には無いため、GitHub release の .deb を version pin + sha256 で導入する。
-# bump 時は version と sha256 を同時更新し diff レビューする。
+# chezmoi はプロビジョニング側のメタツール (mise 管理にはしない)。Ubuntu の apt には
+# 無いため、GitHub release の .deb を version pin + sha256 で導入する。version は両 arch
+# 共通、sha256 は arch 依存なので vars/arch-*.yml が持つ。
+# bump 時は version と両 arch の sha256 を同時更新し diff レビューする。
 chezmoi_version: "2.70.5"
-chezmoi_deb_sha256: "3d006be5cad96688a8e3870cd79e87be2e93e85197014f0603bacb38c5c4f417"
 
 # apt で入れる単純なシステム/CLI ユーティリティ。
 # zsh プラグイン本体は apt、source は dotfiles 側の .zshrc が行う。
