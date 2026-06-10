@@ -55,6 +55,8 @@
     - squid           # egress proxy (SNI allowlist)
     - dev_user        # 開発ユーザー作成 + authorized_keys (ec2=SSM / home=git の公開鍵)
     - dev_tools       # apt ユーティリティ + mise binary (arch 依存) + login shell=zsh
+    - role: obsidian  # home のみ。Obsidian Desktop (.deb) を導入し、同梱 CLI の前提を作る。
+      when: target_env == 'home' and obsidian_deb_arch is defined
     - chezmoi         # chezmoi 導入 (arch 依存) + dotfiles 適用 (mise install/sheldon lock 込み)
     - bwrap_wrappers  # claude/codex/pnpm の bwrap sandbox wrapper + leak 自テスト
                       # (chezmoi の後: leak test の pnpm 検証が mise install 済 node を使う)

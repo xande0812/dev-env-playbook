@@ -56,10 +56,15 @@ sudo ansible-pull \
 | [squid](roles/squid) | egress proxy（SNI allowlist） |
 | [dev_user](roles/dev_user) | 開発ユーザー作成 + authorized_keys（ec2=SSM / home=git の公開鍵） |
 | [dev_tools](roles/dev_tools) | apt ユーティリティ + mise binary（arch 依存） + login shell=zsh |
+| [obsidian](roles/obsidian) | **home のみ。** Obsidian Desktop `.deb` 導入（同梱 CLI の前提） |
 | [chezmoi](roles/chezmoi) | chezmoi 導入（arch 依存） + dotfiles 適用（mise install / sheldon lock 込み） |
 | [bwrap_wrappers](roles/bwrap_wrappers) | claude/codex/pnpm の bwrap sandbox wrapper + leak 自テスト |
 
 dotfiles 本体（zsh / git / tmux / mise config / claude・codex の設定）は chezmoi（公開リポ `dev-env-dotfiles`）が管理する。この playbook は system 層・ツール binary 導入・chezmoi 起動を担う。
+
+### Obsidian CLI
+
+Obsidian CLI は standalone binary ではなく Obsidian Desktop に同梱される。playbook は home 環境で Desktop `.deb` を version/sha256 pin して導入する。インストール後に Obsidian を起動し、`Settings -> General -> Command line interface` を有効化すると、CLI binary が `~/.local/bin/obsidian` に登録される。`~/.local/bin` は PATH に入っている必要がある。
 
 ### 自宅サーバ（home）で要設定の値
 
