@@ -40,6 +40,31 @@
   environment:
     HOME: "/home/{{ dev_user_name }}"
 
+- name: Check chezmoi source origin URL
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command: chezmoi git -- remote get-url origin
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+  register: chezmoi_origin_url
+  changed_when: false
+
+- name: Ensure chezmoi source origin uses the configured public URL
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command:
+    argv:
+      - chezmoi
+      - git
+      - --
+      - remote
+      - set-url
+      - origin
+      - "{{ dotfiles_repo_url }}"
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+  when: chezmoi_origin_url.stdout != dotfiles_repo_url
+
 - name: Check chezmoi source worktree status
   become: true
   become_user: "{{ dev_user_name }}"
