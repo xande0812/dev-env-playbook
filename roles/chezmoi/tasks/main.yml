@@ -40,10 +40,32 @@
   environment:
     HOME: "/home/{{ dev_user_name }}"
 
+- name: Check chezmoi source worktree status
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command: chezmoi git -- status --porcelain
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+  register: chezmoi_git_status
+  changed_when: false
+
+- name: Refuse to pull dotfiles with local source changes
+  ansible.builtin.assert:
+    that:
+      - chezmoi_git_status.stdout == ""
+    fail_msg: >-
+      /home/{{ dev_user_name }}/.local/share/chezmoi に未 commit の変更があります。
+      対象ホスト上で
+      `sudo -u {{ dev_user_name }} HOME=/home/{{ dev_user_name }} chezmoi git -- status --short`
+      と
+      `sudo -u {{ dev_user_name }} HOME=/home/{{ dev_user_name }} chezmoi git -- diff --stat`
+      を確認し、必要なら dotfiles repo に commit/push するか、不要なら破棄してから
+      ansible-pull を再実行してください。
+
 - name: Pull latest dotfiles
   become: true
   become_user: "{{ dev_user_name }}"
-  ansible.builtin.command: chezmoi git -- pull --ff-only
+  ansible.builtin.command: chezmoi git -- -c pull.rebase=false pull --ff-only
   environment:
     HOME: "/home/{{ dev_user_name }}"
   register: chezmoi_pull
