@@ -72,6 +72,8 @@ dotfiles 本体（zsh / git / tmux / mise config / claude・codex の設定）�
 
 claude / codex / pnpm を bwrap で隔離して起動する wrapper を `/usr/local/` に配置する。CLI バイナリ自体は mise（dotfiles の `dot_config/mise/config.toml` で版 pin）が `$HOME` 配下に install し、wrapper が `mise which` で実体パスを解決して sandbox 内で起動する。`~/.aws` / `~/.ssh` 等が sandbox 内から不可視であることを [roles/bwrap_wrappers](roles/bwrap_wrappers) の leak 自テストが検証し、leak を検出したら provisioning を fail させる。IMDS / instance role には依存しないため EC2 / home 両方で同一に動く。
 
+agent が作業メモを書き残せるよう、Obsidian vault の **AI 専用サブフォルダ `~/obvault/AI` のみ** を rw bind する（claude / codex 両 base）。個人ノート本体（`~/obvault/` 直下）は bind せず sandbox 内から不可視のままにし、prompt injection 経由の個人ノート読取・改変を防ぐ。bind source は `--tmpfs /home` マスク下で実在しないと `--bind-try` が skip するため、各 base の `AGENT_MKDIR_DIRS` で起動前に `mkdir -p` して保証する。実際に何を記録させるか（slash command / frontmatter 規約）は dotfiles 側の `CLAUDE.md` / `AGENTS.md` / `~/.claude/commands` が担う。
+
 ## 秘密情報
 
 このリポジトリは公開。**秘密値（API キー・鍵・トークン）は一切置かない**。秘密が必要な処理は実行時にホスト側のセキュアな仕組み（SSM Parameter Store / `SendEnv`+`AcceptEnv` の session env 等）から取得する設計に寄せる。`dev_user_pubkey` は**公開鍵**なので git 管理してよい。

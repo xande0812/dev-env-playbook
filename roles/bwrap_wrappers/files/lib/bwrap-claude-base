@@ -3,10 +3,14 @@
 # ~/.config/gh を bind する。隔離核は agent-base (claude / codex 共通) に集約。
 # ~/.claude.json は Claude Code が project history / MCP 設定等を書き出す config で、
 # $HOME 直下にあるため --tmpfs /home でマスクされる → 起動前 touch で persistence 回復。
+# 加えて Obsidian vault の AI 専用サブフォルダ ~/obvault/AI を rw bind する。個人ノート
+# 本体 (~/obvault/ 直下) は bind しない = sandbox 内から不可視のまま。実体が無いと
+# --bind-try が skip するため AGENT_MKDIR_DIRS で起動前に mkdir -p して bind を保証する。
 set -euo pipefail
 export AGENT_NAME="bwrap-claude-base"
 export AGENT_API_KEY_ENVS="ANTHROPIC_API_KEY"
-export AGENT_RW_BINDS=".claude .claude.json .config/gh"
+export AGENT_RW_BINDS=".claude .claude.json .config/gh obvault/AI"
 export AGENT_RO_BINDS=""
 export AGENT_TOUCH_FILES=".claude.json"
+export AGENT_MKDIR_DIRS="obvault/AI"
 exec /usr/local/lib/bwrap/agent-base "$@"
