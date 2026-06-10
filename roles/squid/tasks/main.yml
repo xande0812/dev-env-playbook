@@ -6,6 +6,7 @@
     name:
       - squid-openssl
       - openssl
+      - iptables
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -102,8 +103,8 @@
 
 # --- config + allowlist ------------------------------------------------------
 - name: Install squid.conf
-  ansible.builtin.copy:
-    src: squid.conf
+  ansible.builtin.template:
+    src: squid.conf.j2
     dest: /etc/squid/squid.conf
     owner: root
     group: root
@@ -159,3 +160,54 @@
   # allowlist 外は ssl_bump terminate で TLS error になり curl が非ゼロ終了するのが正。
   # exit 0 (= 通ってしまった) なら allowlist enforcement が壊れているので fail。
   failed_when: denied_curl.rc == 0
+
+# --- 強制透過化: direct TCP/80,443 を Squid intercept へ流す ------------------
+- name: Install direct egress redirect script
+  ansible.builtin.template:
+    src: dev-egress-squid-redirect.j2
+    dest: /usr/local/sbin/dev-egress-squid-redirect
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install direct egress redirect systemd unit
+  ansible.builtin.template:
+    src: dev-egress-squid-redirect.service.j2
+    dest: /etc/systemd/system/dev-egress-squid-redirect.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable direct egress redirect at boot
+  ansible.builtin.systemd:
+    name: dev-egress-squid-redirect
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# oneshot service は active/exited になるため、Ansible 再実行時にも直接 script を叩いて
+# iptables の drift を戻す。
+- name: Apply direct egress redirect rules
+  ansible.builtin.command: /usr/local/sbin/dev-egress-squid-redirect
+  changed_when: false
+
+- name: Verify a direct allowed domain is transparently proxied
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command: >
+    curl -sS --max-time 15 --retry 3 --retry-delay 2 --retry-connrefused
+    -o /dev/null https://registry.npmjs.org/
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+  changed_when: false
+
+- name: Verify a direct non-allowlisted domain is blocked
+  become: true
+  become_user: "{{ dev_user_name }}"
+  ansible.builtin.command: >
+    curl -sS --max-time 15 -o /dev/null https://example.com/
+  environment:
+    HOME: "/home/{{ dev_user_name }}"
+  register: denied_transparent_curl
+  changed_when: false
+  failed_when: denied_transparent_curl.rc == 0

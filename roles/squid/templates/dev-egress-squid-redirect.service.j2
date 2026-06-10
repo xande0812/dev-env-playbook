@@ -1,0 +1,13 @@
+[Unit]
+Description=Redirect direct web egress through Squid
+After=network-online.target squid.service
+Wants=network-online.target
+Requires=squid.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dev-egress-squid-redirect
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

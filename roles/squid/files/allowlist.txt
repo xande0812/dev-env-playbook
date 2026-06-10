@@ -33,6 +33,7 @@
 ^.*\.npmjs\.com$
 ^pypi\.org$
 ^.*\.pythonhosted\.org$
+^mise\.jdx\.dev$
 
 # ---- OS updates ----
 ^.*\.ubuntu\.com$

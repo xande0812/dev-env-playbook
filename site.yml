@@ -46,15 +46,31 @@
           (lan_subnet の誤りは ufw enable 後に SSH を全遮断します)。
         quiet: true
 
+    # 前回実行で host-wide redirect が残っていると、base/dev_tools/chezmoi の
+    # apt update や git pull が refresh 前の Squid allowlist に巻き込まれて
+    # provisioning 自体が詰まる。
+    # playbook 開始時に一度外し、squid role の最後で最新設定として再適用する。
+    - name: Clear stale direct egress redirect before provisioning
+      ansible.builtin.shell: |
+        set -u
+        for bin in /usr/sbin/iptables /usr/sbin/ip6tables; do
+          [ -x "$bin" ] || continue
+          while "$bin" -t nat -D OUTPUT -j DEV_SQUID_OUTPUT 2>/dev/null; do :; done
+          "$bin" -t nat -F DEV_SQUID_OUTPUT 2>/dev/null || true
+          "$bin" -t nat -X DEV_SQUID_OUTPUT 2>/dev/null || true
+        done
+      changed_when: false
+      failed_when: false
+
   roles:
     - base            # apt 基本パッケージ + AWS CLI v2 (arch 依存)
     - sshd_hardening  # sshd の公開鍵認証強制 + AcceptEnv
     - role: ufw       # インバウンド制御 (旧 EC2 Security Group の代替)。自宅のみ。
       when: target_env == 'home'
     - apparmor_bwrap  # bwrap に userns を許可する AppArmor profile
-    - squid           # egress proxy (SNI allowlist)
     - dev_user        # 開発ユーザー作成 + authorized_keys (ec2=SSM / home=git の公開鍵)
     - dev_tools       # apt ユーティリティ + mise binary (arch 依存) + login shell=zsh
     - chezmoi         # chezmoi 導入 (arch 依存) + dotfiles 適用 (mise install/sheldon lock 込み)
+    - squid           # egress proxy (SNI allowlist + 透過 redirect)
     - bwrap_wrappers  # claude/codex/pnpm の bwrap sandbox wrapper + leak 自テスト
-                      # (chezmoi の後: leak test の pnpm 検証が mise install 済 node を使う)
+                      # (squid/chezmoi の後: leak test の pnpm 検証が proxy と mise 済 node を使う)
