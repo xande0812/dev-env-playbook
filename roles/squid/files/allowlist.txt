@@ -8,10 +8,13 @@
 #   - write 系 (production への CREATE/UPDATE/DELETE) credential はこの allowlist
 #     経由では渡さない (laptop 側に留める)
 
-# ---- Anthropic (Claude Code API + docs) ----
-^api\.anthropic\.com$
-# claude settings.json の WebFetch(domain:docs.anthropic.com) と同時更新。
-^docs\.anthropic\.com$
+# ---- Anthropic (Claude Code API / OAuth / docs / bridge) ----
+^.*\.anthropic\.com$
+^claude\.ai$
+^.*\.claude\.ai$
+^platform\.claude\.com$
+^.*\.claudeusercontent\.com$
+^storage\.googleapis\.com$
 
 # ---- OpenAI (codex API + ChatGPT OAuth) ----
 # codex は自身の API 通信で api.openai.com、OAuth ログインで auth.openai.com /
@@ -27,6 +30,7 @@
 ^.*\.githubusercontent\.com$
 ^.*\.githubassets\.com$
 ^codeload\.github\.com$
+^raw\.githubusercontent\.com$
 
 # ---- Package registries ----
 ^registry\.npmjs\.org$

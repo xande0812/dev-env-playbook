@@ -11,6 +11,9 @@
 #   AGENT_RO_BINDS       $HOME 相対で ro bind する config (空白区切り, 空可)
 #   AGENT_TOUCH_FILES    --tmpfs /home でマスクされる $HOME 直下ファイルの persistence
 #                        回復用に起動前 touch する $HOME 相対ファイル (空白区切り, 空可)
+#   AGENT_MKDIR_DIRS     rw bind 対象だが実体が無いと --bind-try が silently skip する
+#                        ため起動前に mkdir -p する $HOME 相対ディレクトリ
+#                        (AGENT_TOUCH_FILES の dir 版, 空白区切り, 空可)
 #
 # 使い方: agent-base [PASSTHROUGH...] -- COMMAND [ARGS...]
 # PASSTHROUGH:
@@ -159,6 +162,14 @@ for f in ${AGENT_TOUCH_FILES:-}; do
     printf '{}\n' > "$HOME/$f"
     chmod 600 "$HOME/$f"
   fi
+done
+
+# AGENT_RW_BINDS の bind source が --tmpfs /home マスク下で実在しないと --bind-try は
+# silently skip し、sandbox 内からパスが見えない。起動前に mkdir -p して bind を保証する
+# (例: ~/obvault/AI — Obsidian vault の AI 専用サブフォルダ)。AGENT_TOUCH_FILES の dir 版。
+# shellcheck disable=SC2086
+for d in ${AGENT_MKDIR_DIRS:-}; do
+  [ -d "$HOME/$d" ] || mkdir -p "$HOME/$d"
 done
 
 exec "$bwrap_bin" \
