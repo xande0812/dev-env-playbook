@@ -10,7 +10,3 @@ mise_arch: amd64
 # chezmoi .deb のアーキテクチャ識別子と sha256 (GitHub release の checksums.txt より)。
 chezmoi_arch: amd64
 chezmoi_deb_sha256: "5e5203411292a25c3014114055e4a89669887c3bfd8893b152f1824d08ec4b98"
-
-# Obsidian Desktop .deb のアーキテクチャ識別子と sha256。
-obsidian_deb_arch: amd64
-obsidian_deb_sha256: "3644e3ef19bcd23db4d17f7c73311b5245429391a2a48b361da93375f59712b0"

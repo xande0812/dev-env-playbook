@@ -16,10 +16,6 @@ dotfiles_repo_url: https://github.com/xande0812/dev-env-dotfiles.git
 # bump 時は version と両 arch の sha256 を同時更新し diff レビューする。
 chezmoi_version: "2.70.5"
 
-# Obsidian CLI は Desktop app 同梱のため、home 環境に GUI 本体を pinned .deb で
-# 導入する。CLI の有効化・登録は Obsidian の Settings -> General で手動実行する。
-obsidian_version: "1.12.7"
-
 # apt で入れる単純なシステム/CLI ユーティリティ。
 # zsh プラグイン本体は apt、source は dotfiles 側の .zshrc が行う。
 # mise 管理ツール (node/eza/starship/sheldon/...) は dotfiles の mise config が持つ。
