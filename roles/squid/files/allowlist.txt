@@ -44,6 +44,9 @@
 ^mise-versions\.jdx\.dev$
 # mise core:go backend が Go 本体を取得する配布元。
 ^dl\.google\.com$
+# mise が aqua backend のツール (uv 等) を入れる際、GitHub artifact attestation を
+# Sigstore で検証する。その TUF root metadata の配布元 (tuf-repo-cdn.sigstore.dev)。
+^tuf-repo-cdn\.sigstore\.dev$
 
 # ---- OS updates ----
 ^.*\.ubuntu\.com$
