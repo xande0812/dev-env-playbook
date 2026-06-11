@@ -76,6 +76,15 @@ agent が作業メモを書き残せるよう、Obsidian vault の **AI 専用�
 
 direct な TCP/80,443 は host 側 iptables で Squid の intercept port に redirect される。Squid 自身の outbound と localhost / private address / link-local 宛ては local control plane や LAN 内通信を壊さないため redirect 対象外。bwrap は network namespace を分けないため、sandbox 内の agent / pnpm 通信も同じ Squid allowlist を通る。
 
+### allowlist にドメインを足す
+
+新しいツールが弾かれたとき（`handshake failed` / `tls handshake eof` / `error sending request for url` 等）は、そのエラー出力を project-scoped slash command [`/squid-allow`](.claude/commands/squid-allow.md) に渡す。エラーから到達失敗ホストを抽出し、`roles/squid/files/allowlist.txt` に最小一致の SNI regex を追記して検証まで行う（追加のみ・既存許可は緩めない）。sandbox 内は `no_new_privs` で sudo が使えないため、反映だけは sandbox 外のシェルで実行する:
+
+```bash
+sudo install -m644 roles/squid/files/allowlist.txt /etc/squid/allowlist.txt
+sudo squid -k parse && sudo systemctl restart squid
+```
+
 ## 秘密情報
 
 このリポジトリは公開。**秘密値（API キー・鍵・トークン）は一切置かない**。秘密が必要な処理は実行時にホスト側のセキュアな仕組み（SSM Parameter Store / `SendEnv`+`AcceptEnv` の session env 等）から取得する設計に寄せる。`dev_user_pubkey` は**公開鍵**なので git 管理してよい。

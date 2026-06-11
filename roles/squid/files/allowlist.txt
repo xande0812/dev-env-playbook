@@ -26,6 +26,9 @@
 ^.*\.chatgpt\.com$
 
 # ---- GitHub (Claude Code / git / gh CLI) ----
+# apex (github.com) は subdomain regex にマッチしないので別途許可する。
+# mise 等が version 取得で git ls-remote https://github.com/... を叩く。
+^github\.com$
 ^.*\.github\.com$
 ^.*\.githubusercontent\.com$
 ^.*\.githubassets\.com$
@@ -38,6 +41,9 @@
 ^pypi\.org$
 ^.*\.pythonhosted\.org$
 ^mise\.jdx\.dev$
+^mise-versions\.jdx\.dev$
+# mise core:go backend が Go 本体を取得する配布元。
+^dl\.google\.com$
 
 # ---- OS updates ----
 ^.*\.ubuntu\.com$
