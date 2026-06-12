@@ -74,6 +74,8 @@ claude / codex / pnpm を bwrap で隔離して起動する wrapper を `/usr/lo
 
 agent が作業メモを書き残せるよう、Obsidian vault の **AI 専用サブフォルダ `~/obvault/AI` のみ** を rw bind する（claude / codex 両 base）。個人ノート本体（`~/obvault/` 直下）は bind せず sandbox 内から不可視のままにし、prompt injection 経由の個人ノート読取・改変を防ぐ。bind source は `--tmpfs /home` マスク下で実在しないと `--bind-try` が skip するため、各 base の `AGENT_MKDIR_DIRS` で起動前に `mkdir -p` して保証する。実際に何を記録させるか（slash command / frontmatter 規約）は dotfiles 側の `CLAUDE.md` / `AGENTS.md` / `~/.claude/commands` が担う。
 
+Rust（cargo）を使う project では、host で mise（`core:rust` = rustup backend）が `~/.rustup` / `~/.cargo` に install した toolchain を sandbox 内で消費する。toolchain 本体（`~/.rustup`）は ro bind、cargo の registry/git cache は `~/.cache/cargo` に分離して rw bind で永続化する（pnpm の `~/.cache/pnpm` と同じ思想）。`~/.cargo` 自体は `credentials.toml`（crates.io publish token）を含みうるため bind せず不可視のままにし、leak 自テストが `~/.cargo/credentials.toml` の不可視を検証する。sandbox 内の mise auto-install は OFF（`MISE_NOT_FOUND_AUTO_INSTALL=false`）のため、新しい rust 版を使う project は **host 側（sandbox 外シェル）で先に `mise install`** しておく（ro bind 先への install は "Read-only file system" で失敗する）。
+
 direct な TCP/80,443 は host 側 iptables で Squid の intercept port に redirect される。Squid 自身の outbound と localhost / private address / link-local 宛ては local control plane や LAN 内通信を壊さないため redirect 対象外。bwrap は network namespace を分けないため、sandbox 内の agent / pnpm 通信も同じ Squid allowlist を通る。
 
 ### allowlist にドメインを足す

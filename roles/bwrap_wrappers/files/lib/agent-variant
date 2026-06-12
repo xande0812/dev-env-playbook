@@ -43,6 +43,17 @@ app_bin=$(mise which "$tool" 2>/dev/null) || {
   exit 127
 }
 
+# Rust project (cargo build/test) では toolchain の bin dir を PATH 前置する。base は
+# PATH を透過する (--setenv PATH "$PATH") だけなので、前置はここ host 文脈で行う
+# (pnpm-base が node_bin を前置するのと同じ役割分担)。mise core:rust の proxy は
+# ~/.cargo/bin にあるが ~/.cargo は sandbox に bind しない方針なので、agent-base が
+# ro-bind する ~/.rustup 配下の実 toolchain bin を使う。rust が active でない (cwd の
+# mise.toml に rust が無い) project では rustup が無い/失敗するので何も足さない。
+if rust_tc=$(rustup show active-toolchain 2>/dev/null | awk 'NR==1{print $1}') \
+  && [ -n "$rust_tc" ] && [ -d "$HOME/.rustup/toolchains/$rust_tc/bin" ]; then
+  export PATH="$HOME/.rustup/toolchains/$rust_tc/bin:$PATH"
+fi
+
 cgroup_limits="--property=MemoryMax=4G --property=CPUQuota=400% --property=TasksMax=1024"
 
 # systemd --user が無い環境 (cron, non-login ssh 等) では systemd-run --user が固まる/
