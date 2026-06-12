@@ -44,6 +44,16 @@
 ^mise-versions\.jdx\.dev$
 # mise core:go backend が Go 本体を取得する配布元。
 ^dl\.google\.com$
+# mise core:rust backend が rustup 経由で Rust toolchain を取得する配布元。
+# sh.rustup.rs = rustup-init bootstrap スクリプト、
+# static.rust-lang.org = rustup-init 本体 + toolchain dist (/rustup, /dist) の CDN。
+^sh\.rustup\.rs$
+^static\.rust-lang\.org$
+# cargo が依存 crate を取得する配布元 (sparse registry, cargo 1.70+ 既定)。
+# index.crates.io = sparse index (crate メタデータ)、static.crates.io = crate tarball DL。
+# apex crates.io (publish/search/yank の write・account API) は意図的に未許可。
+^index\.crates\.io$
+^static\.crates\.io$
 # mise が aqua backend のツール (uv 等) を入れる際、GitHub artifact attestation を
 # Sigstore で検証する。その TUF root metadata の配布元 (tuf-repo-cdn.sigstore.dev)。
 ^tuf-repo-cdn\.sigstore\.dev$
@@ -59,6 +69,11 @@
 # write 系 credential を渡さない運用規律でカバーする。
 ^[a-z0-9-]+\.amazonaws\.com$
 ^[a-z0-9-]+\.[a-z0-9-]+\.amazonaws\.com$
+# AWS CLI v2 既定の S3 regional virtual-hosted-style
+# (<bucket>.s3.<region>.amazonaws.com = 3 ラベル) は上の 2 ラベル pattern で
+# 拾えず terminate される (aws s3 ls が SSL WRONG_VERSION_NUMBER で失敗)。
+# 別 region bucket の read 確認用に S3 vhost 形に限定して許可する。
+^[a-z0-9-]+\.s3\.[a-z0-9-]+\.amazonaws\.com$
 
 # ---- Documentation domains for agent WebFetch ----
 # agent の WebFetch(domain:...) allowlist と必ず同時更新すること。
