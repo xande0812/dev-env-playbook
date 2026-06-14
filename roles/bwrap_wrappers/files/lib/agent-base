@@ -172,12 +172,24 @@ for d in ${AGENT_MKDIR_DIRS:-}; do
   [ -d "$HOME/$d" ] || mkdir -p "$HOME/$d"
 done
 
+# Rust (mise core:rust = rustup backend) 対応。toolchain 実体は host の `mise install rust`
+# が ~/.rustup / ~/.cargo に展開済 (project の mise.toml に応じ host 側で事前 install して
+# おく)。sandbox は ~/.rustup を ro 消費し、cargo の registry/git cache だけ ~/.cache/cargo
+# に分離して rw 永続化する (pnpm の ~/.cache/pnpm と同じ思想)。~/.cargo 自体は
+# credentials.toml (crates.io publish token) を含みうるため絶対に bind しない。
+cargo_home="$HOME/.cache/cargo"
+rustup_home="$HOME/.rustup"
+mkdir -p "$cargo_home"
+
 exec "$bwrap_bin" \
   --clearenv \
   --setenv HOME "$HOME" \
   --setenv PATH "$PATH" \
   --setenv TERM "${TERM:-xterm-256color}" \
   --setenv LANG "${LANG:-C.UTF-8}" \
+  --setenv CARGO_HOME "$cargo_home" \
+  --setenv RUSTUP_HOME "$rustup_home" \
+  --setenv MISE_NOT_FOUND_AUTO_INSTALL "false" \
   "${api_args[@]}" \
   --setenv GIT_SSH_COMMAND "$blocker" \
   --ro-bind /usr /usr \
@@ -194,9 +206,11 @@ exec "$bwrap_bin" \
   --tmpfs /home \
   --ro-bind-try "$HOME/.local/share/mise" "$HOME/.local/share/mise" \
   --ro-bind-try "$HOME/.config/mise" "$HOME/.config/mise" \
+  --ro-bind-try "$rustup_home" "$rustup_home" \
   --bind "$project" "$project" \
   "${git_extra_binds[@]}" \
   "${rw_args[@]}" \
+  --bind "$cargo_home" "$cargo_home" \
   "${ro_args[@]}" \
   --ro-bind-try "$HOME/.config/git" "$HOME/.config/git" \
   "${passthrough_args[@]}" \
