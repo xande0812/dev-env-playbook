@@ -1,1 +1,7 @@
 *.retry
+
+# squid private allowlist overlay の誤コミット防止 (安全網)。
+# 正は サーバ上の /etc/squid/allowlist.local.txt を直接管理する方式 (playbook
+# 管理外)。repo 側に同名ファイルを置く運用ではないが、検証用に一時生成しても
+# 公開 repo に push されないよう ignore しておく。
+roles/squid/files/allowlist.local.txt

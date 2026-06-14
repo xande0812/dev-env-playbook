@@ -120,6 +120,34 @@
     mode: '0644'
   notify: Restart squid
 
+# private allowlist overlay (サーバ常駐・playbook 管理外)。
+# squid.conf は allowlist.txt と本ファイルを OR で読む。公開できない private
+# ホストはサーバ上の /etc/squid/allowlist.local.txt を直接編集して管理する
+# (この repo は ansible-pull で公開 GitHub から fresh clone されるため、private
+# な中身を repo に置くと公開されてしまう)。
+# ここでは参照先が無いと squid -k parse が FATAL するのを防ぐため、ファイルが
+# 無いときだけ自己説明的な placeholder を seed する (force: false = 既存の手編集
+# 内容は一切上書きしない)。
+- name: Ensure squid private allowlist exists (server-maintained, never clobbered)
+  ansible.builtin.copy:
+    content: |
+      # squid private allowlist overlay (server-local, NOT in git)
+      #
+      # 公開できない private ホストだけをここに 1 行 1 regex で追記する。
+      # 例: ^api\.example\.com$
+      # このファイルは playbook 管理外。ansible は存在保証のみで中身は上書きしない。
+      # 公開して問題ない汎用ホストは roles/squid/files/allowlist.txt 側に書く。
+      #
+      # 下行は空ファイル化を避けるためのダミー (実在しない .invalid TLD なので
+      # 何も許可しない)。private host を 1 つでも足したらこの行は消してよい。
+      ^placeholder\.invalid$
+    dest: /etc/squid/allowlist.local.txt
+    force: false
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart squid
+
 - name: Validate squid configuration syntax
   ansible.builtin.command: squid -k parse
   changed_when: false

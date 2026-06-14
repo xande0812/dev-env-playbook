@@ -35,7 +35,13 @@ http_access deny manager
 
 # ---------------------------------------------------------------------------
 # SslBump: SNI だけ参照、TLS は MITM しない (step2 完結型)
-# allowlist は /etc/squid/allowlist.txt (regex, 1 行 1 entry)
+# allowlist は 2 ファイル構成 (どちらも regex, 1 行 1 entry):
+#   /etc/squid/allowlist.txt       = 公開分 (playbook repo にコミット)
+#   /etc/squid/allowlist.local.txt = private 分 (サーバ上で直接管理・repo 非掲載)
+# マージは「同名 acl を 2 行」で行う (Squid は同名 acl 行を OR で結合する)。
+# 1 行に複数 quoted file を並べる形 (... "a" "b") は Squid 7 で 2 つ目の file が
+# include されず private 分が黙って効かない事故があったため、行分割方式を採る。
+# local 側は空 (実在しない placeholder 1 行) でも parse は通る。
 #
 # 評価フロー:
 #   step1 (CONNECT 直後): peek でクライアント Hello を待つ
@@ -49,7 +55,9 @@ http_access deny manager
 acl step1 at_step SslBump1
 acl step2 at_step SslBump2
 acl allowed_sni ssl::server_name_regex -i "/etc/squid/allowlist.txt"
+acl allowed_sni ssl::server_name_regex -i "/etc/squid/allowlist.local.txt"
 acl allowed_http dstdom_regex -i "/etc/squid/allowlist.txt"
+acl allowed_http dstdom_regex -i "/etc/squid/allowlist.local.txt"
 acl plain_http_ports myportname explicit_proxy http_intercept
 
 ssl_bump peek step1
