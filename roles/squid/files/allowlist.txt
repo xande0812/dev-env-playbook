@@ -44,6 +44,12 @@
 ^mise-versions\.jdx\.dev$
 # mise core:go backend が Go 本体を取得する配布元。
 ^dl\.google\.com$
+# go mod / go build がモジュールを取得・検証する Go 公式インフラ。
+# proxy.golang.org = module proxy (GOPROXY 既定。.info/.mod/.zip 配布)、
+# sum.golang.org   = checksum database (GOSUMDB 既定。新規 module の go.sum 検証)。
+# どちらも read-only な公開エンドポイント (publish/write 系は存在しない)。
+^proxy\.golang\.org$
+^sum\.golang\.org$
 # mise core:rust backend が rustup 経由で Rust toolchain を取得する配布元。
 # sh.rustup.rs = rustup-init bootstrap スクリプト、
 # static.rust-lang.org = rustup-init 本体 + toolchain dist (/rustup, /dist) の CDN。
