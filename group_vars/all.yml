@@ -7,6 +7,10 @@
 # 開発ユーザー名。このリポを特定の個人に紐付けないため汎用名にしている。
 dev_user_name: human
 
+# システムのタイムゾーン。EC2 / 自宅とも OS 既定は UTC のため、log や date 表示を
+# 日本時間に揃える。base role が timedatectl で冪等に適用する。
+system_timezone: Asia/Tokyo
+
 # dotfiles (chezmoi source) の公開リポ。chezmoi が clone/apply する。
 dotfiles_repo_url: https://github.com/xande0812/dev-env-dotfiles.git
 

@@ -1,4 +1,17 @@
 ---
+# システムのタイムゾーンを system_timezone (既定 Asia/Tokyo) に揃える。
+# base role は ansible.builtin で統一しており community collection を入れないため、
+# timezone module は使わず timedatectl で設定する。現在値を読んで差分時のみ適用し冪等化する。
+- name: Check current system timezone
+  ansible.builtin.command: timedatectl show --property=Timezone --value
+  register: current_timezone
+  changed_when: false
+
+- name: Set system timezone to {{ system_timezone }}
+  ansible.builtin.command: timedatectl set-timezone {{ system_timezone }}
+  when: current_timezone.stdout != system_timezone
+  changed_when: true
+
 # 基本パッケージと AWS CLI v2 を導入する。
 - name: Install base packages
   ansible.builtin.apt:
