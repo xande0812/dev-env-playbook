@@ -1,0 +1,91 @@
+---
+# Tailscale (WireGuard ベースの mesh VPN) を自宅 dev-server に導入する。
+# tailscaled を root 常駐させる system 層の daemon のため ansible 側で扱う
+# (dotfiles/chezmoi はユーザー設定担当なので対象外)。
+#
+# 適用条件: target_env == 'home' のみ (site.yml の role 条件)。EC2 は SSM +
+#           Security Group で運用しているため対象外。
+#
+# 【認証は手動】`tailscale up` (SSO ログイン) はこの role では実行しない:
+#   - このリポは公開のため auth key (秘密値) を一切置かない方針 (README「秘密情報」)。
+#   - git/network operation は sandbox 外で手動実行する方針 (user-global CLAUDE.md)。
+#   role は install + service 有効化 + ufw 受信許可までを行い、ログインは利用者が
+#   sandbox 外のシェルで `sudo tailscale up` を 1 度だけ実行する (末尾の案内参照)。
+#
+# 【egress proxy との関係】tailscaled の control plane / DERP relay / apt repo は
+#   TCP/443 で公開ホストに出るため squid の透過 redirect 対象になる。roles/squid の
+#   allowlist.txt に *.tailscale.com / log.tailscale.io を追加済 (同変更)。WireGuard の
+#   data plane は UDP/41641 のため redirect されない。tailnet (100.64.0.0/10) 宛ての
+#   TCP/80,443 を squid に横取りさせないよう redirect script に RETURN 除外を追加済。
+
+# apt repo は GitHub release ではなく公式 apt repo を使う。署名鍵は noarmor (binary)
+# 形式を /usr/share/keyrings に置き、deb 行で signed-by 参照する (apt-key は非推奨)。
+# 鍵 / repo の取得自体も pkgs.tailscale.com (TCP/443) 宛てなので squid allowlist 必須。
+- name: Add Tailscale apt signing key
+  ansible.builtin.get_url:
+    url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_distribution_release }}.noarmor.gpg"
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    owner: root
+    group: root
+    mode: '0644'
+
+# .list を remote から取得せず deb 行を自前で組む (取得内容に依存せず決定的にする)。
+# arch は apt が自動解決するため arch-*.yml への分岐は不要。
+- name: Add Tailscale apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
+      https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main
+    filename: tailscale
+    state: present
+    update_cache: true
+
+- name: Install tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Enable and start tailscaled
+  ansible.builtin.systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+# --- ufw: tailnet 受信許可 (role 自体が home guard 下) ------------------------
+# 現在 ufw は SSH を有線直結 LAN (lan_subnet) のみ許可し、ネットワーク経由 SSH を
+# default deny で禁止している。Tailscale 経由のリモート接続を成立させるため、
+# tailscale0 インターフェース宛ての受信を許可する。誰が tailnet にいるか自体は
+# Tailscale 側の認証 + ACL が制御するため、tailscale0 inbound を信頼してよい。
+# ufw role で ufw は既に enable 済 (site.yml で先に走る)。ufw CLI は冪等。
+- name: Allow inbound traffic on the tailscale0 interface
+  ansible.builtin.command: ufw allow in on tailscale0
+  register: ufw_allow_ts
+  changed_when: "'Skipping adding existing rule' not in ufw_allow_ts.stdout"
+
+# 直接 P2P (WireGuard) 確立のため 41641/udp inbound を許可する。塞いでいても DERP
+# relay 経由で疎通はするが、直結の方が低レイテンシ。WireGuard は暗号化済。
+- name: Allow direct WireGuard inbound (UDP 41641)
+  ansible.builtin.command: ufw allow 41641/udp
+  register: ufw_allow_wg
+  changed_when: "'Skipping adding existing rule' not in ufw_allow_wg.stdout"
+
+# --- 認証状態の確認 + 手動ログイン案内 ---------------------------------------
+# 未ログイン (Logged out) のとき `tailscale status` は非ゼロ終了する。その場合だけ
+# 手動ログインを促す (auth key を置かない方針のため自動ログインはしない)。
+- name: Check Tailscale login state
+  ansible.builtin.command: tailscale status
+  register: ts_status
+  changed_when: false
+  failed_when: false
+
+- name: Remind to authenticate Tailscale manually (run outside the sandbox)
+  ansible.builtin.debug:
+    msg: >-
+      Tailscale が未ログインです。sandbox 外のシェルで `sudo tailscale up` を実行し、
+      表示される URL をノート PC のブラウザで開いて SSO 認証してください
+      (公開リポに auth key を置かない方針のため自動ログインはしません)。
+  when: ts_status.rc != 0

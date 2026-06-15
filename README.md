@@ -57,6 +57,7 @@ sudo ansible-pull \
 | [dev_tools](roles/dev_tools) | apt ユーティリティ + mise binary（arch 依存） + login shell=zsh |
 | [chezmoi](roles/chezmoi) | chezmoi 導入（arch 依存） + dotfiles 適用（mise install / sheldon lock 込み） |
 | [squid](roles/squid) | egress proxy（SNI allowlist + TCP/80,443 透過 redirect） |
+| [tailscale](roles/tailscale) | **home のみ。** WireGuard mesh VPN（tailscaled 導入 + ufw 受信許可）。認証は手動 |
 | [bwrap_wrappers](roles/bwrap_wrappers) | claude/codex/pnpm の bwrap sandbox wrapper + leak 自テスト |
 
 dotfiles 本体（zsh / git / tmux / mise config / claude・codex の設定）は chezmoi（公開リポ `dev-env-dotfiles`）が管理する。この playbook は system 層・ツール binary 導入・chezmoi 起動を担う。
@@ -77,6 +78,22 @@ agent が作業メモを書き残せるよう、Obsidian vault の **AI 専用�
 Rust（cargo）を使う project では、host で mise（`core:rust` = rustup backend）が `~/.rustup` / `~/.cargo` に install した toolchain を sandbox 内で消費する。toolchain 本体（`~/.rustup`）は ro bind、cargo の registry/git cache は `~/.cache/cargo` に分離して rw bind で永続化する（pnpm の `~/.cache/pnpm` と同じ思想）。`~/.cargo` 自体は `credentials.toml`（crates.io publish token）を含みうるため bind せず不可視のままにし、leak 自テストが `~/.cargo/credentials.toml` の不可視を検証する。sandbox 内の mise auto-install は OFF（`MISE_NOT_FOUND_AUTO_INSTALL=false`）のため、新しい rust 版を使う project は **host 側（sandbox 外シェル）で先に `mise install`** しておく（ro bind 先への install は "Read-only file system" で失敗する）。
 
 direct な TCP/80,443 は host 側 iptables で Squid の intercept port に redirect される。Squid 自身の outbound と localhost / private address / link-local 宛ては local control plane や LAN 内通信を壊さないため redirect 対象外。bwrap は network namespace を分けないため、sandbox 内の agent / pnpm 通信も同じ Squid allowlist を通る。
+
+### Tailscale（home のみ）
+
+自宅 dev-server をどこからでも安全に SSH/サービス接続できるよう、WireGuard ベースの mesh VPN [Tailscale](https://tailscale.com/) を [roles/tailscale](roles/tailscale) で導入する。
+
+- **役割分担**: `tailscaled`（root 常駐 daemon）+ apt repo + systemd は system 層なので playbook が担う。
+- **認証は手動**: このリポは公開のため auth key（秘密値）を置かない。`tailscale up` は **sandbox 外のシェル**で利用者が 1 度だけ実行する（network operation 手動方針とも整合）:
+
+  ```bash
+  sudo tailscale up      # 表示 URL をノート PC のブラウザで開き SSO 認証
+  tailscale ip -4        # 付与された 100.x.y.z を確認
+  ```
+
+- **egress proxy 連携**: control plane / DERP relay / apt repo は TCP/443 で公開ホストに出るため squid の透過 redirect 対象。[roles/squid/files/allowlist.txt](roles/squid/files/allowlist.txt) に `*.tailscale.com` / `log.tailscale.io` を追加済。WireGuard data plane（UDP/41641）は redirect されない。tailnet（`100.64.0.0/10`）宛て TCP/80,443 を squid に横取りさせないよう [redirect script](roles/squid/templates/dev-egress-squid-redirect.j2) に RETURN 除外を追加済。
+- **ufw 連携**: tailnet 経由の受信を成立させるため `ufw allow in on tailscale0` と `ufw allow 41641/udp` を追加する。**これにより従来の「有線直結 LAN のみ SSH 許可」方針が緩み、認証済み tailnet からのリモート SSH が可能になる**。誰が tailnet にいるかは Tailscale 側の認証 + ACL が制御するため、到達範囲は [Tailscale ACL](https://tailscale.com/kb/1018/acls) で最小化する（IdP に 2FA、可能なら Tailnet Lock も推奨）。
+- リモート SSH が安定したら、公開ポートの SSH 露出（あれば）は閉じてよい。
 
 ### allowlist にドメインを足す
 

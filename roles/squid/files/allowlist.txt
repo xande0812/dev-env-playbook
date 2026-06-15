@@ -69,6 +69,14 @@
 ^.*\.canonical\.com$
 ^keyserver\.ubuntu\.com$
 
+# ---- Tailscale (control plane / DERP relay / apt repo / client logs) ----
+# tailscaled が coordination (controlplane./login.tailscale.com)、DERP relay
+# (derpN.tailscale.com)、apt repo + 署名鍵 (pkgs.tailscale.com) に TCP/443 で到達する。
+# いずれも *.tailscale.com に含まれる。WireGuard data plane は UDP/41641 のため redirect
+# 対象外 (squid は通らない)。log.tailscale.io は client metrics/logs (既定 on)。
+^.*\.tailscale\.com$
+^log\.tailscale\.io$
+
 # ---- AWS (SSM / CloudWatch + 別アカウント read-only 確認用、広め) ----
 # 日常業務で別アカウントの read-only 確認をするため広めに許可。
 # トレードオフ: sts/iam/s3.* 等も通る = exfil 経路は構造的に閉じきれない。

@@ -21,6 +21,9 @@ apply_v4() {
   "$iptables_bin" -t nat -A "$chain" -d 172.16.0.0/12 -j RETURN
   "$iptables_bin" -t nat -A "$chain" -d 192.168.0.0/16 -j RETURN
   "$iptables_bin" -t nat -A "$chain" -d 169.254.0.0/16 -j RETURN
+  # Tailscale の CGNAT 帯 (tailnet peer)。RFC1918 と同様に信頼境界の内側なので、
+  # tailnet 宛て TCP/80,443 を Squid に横取りさせず素通しする (SSH=22 は元々対象外)。
+  "$iptables_bin" -t nat -A "$chain" -d 100.64.0.0/10 -j RETURN
   "$iptables_bin" -t nat -A "$chain" -p tcp --dport 80 -j REDIRECT --to-ports "$http_port"
   "$iptables_bin" -t nat -A "$chain" -p tcp --dport 443 -j REDIRECT --to-ports "$https_port"
 

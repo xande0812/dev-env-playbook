@@ -72,5 +72,8 @@
     - dev_tools       # apt ユーティリティ + mise binary (arch 依存) + login shell=zsh
     - chezmoi         # chezmoi 導入 (arch 依存) + dotfiles 適用 (mise install/sheldon lock 込み)
     - squid           # egress proxy (SNI allowlist + 透過 redirect)
+    - role: tailscale # WireGuard mesh VPN。自宅のみ。squid の後 (apt repo / 鍵取得が
+                      # squid allowlist と redirect 除外に依存するため)。認証は手動。
+      when: target_env == 'home'
     - bwrap_wrappers  # claude/codex/pnpm の bwrap sandbox wrapper + leak 自テスト
                       # (squid/chezmoi の後: leak test の pnpm 検証が proxy と mise 済 node を使う)
