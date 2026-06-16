@@ -88,6 +88,10 @@
 # 拾えず terminate される (aws s3 ls が SSL WRONG_VERSION_NUMBER で失敗)。
 # 別 region bucket の read 確認用に S3 vhost 形に限定して許可する。
 ^[a-z0-9-]+\.s3\.[a-z0-9-]+\.amazonaws\.com$
+# AWS API MCP server (plugin:aws-core:aws-mcp)。mcp-proxy-for-aws が --skip-auth で
+# 接続する public MCP endpoint (https://aws-mcp.us-east-1.api.aws/mcp)。credential は
+# 送らない。api.aws は amazonaws.com 系の pattern では拾えないため exact host で許可。
+^aws-mcp\.us-east-1\.api\.aws$
 
 # ---- Documentation domains for agent WebFetch ----
 # agent の WebFetch(domain:...) allowlist と必ず同時更新すること。
