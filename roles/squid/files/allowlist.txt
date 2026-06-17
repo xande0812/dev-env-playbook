@@ -92,6 +92,11 @@
 # 接続する public MCP endpoint (https://aws-mcp.us-east-1.api.aws/mcp)。credential は
 # 送らない。api.aws は amazonaws.com 系の pattern では拾えないため exact host で許可。
 ^aws-mcp\.us-east-1\.api\.aws$
+# deploy-on-aws plugin の awsknowledge MCP server (http type) の接続先。
+# read-only な AWS Knowledge MCP の公開エンドポイント (.amazonaws.com でなく .api.aws
+# TLD のため上の AWS pattern では拾えない)。未許可だと ssl_bump terminate で
+# "unknown certificate verification error" になり MCP server が connect 失敗する。
+^knowledge-mcp\.global\.api\.aws$
 
 # ---- Documentation domains for agent WebFetch ----
 # agent の WebFetch(domain:...) allowlist と必ず同時更新すること。
