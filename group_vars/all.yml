@@ -21,7 +21,7 @@ system_timezone: Asia/Tokyo
 #   - pre_tasks が squid / dev-egress-squid-redirect の service を stop + disable
 #     (boot 時に redirect unit が squid を引き戻すのを防ぐ)
 # true に戻して再実行すれば squid 運用に復旧する。
-squid_enabled: false
+squid_enabled: true
 
 # dotfiles (chezmoi source) の公開リポ。chezmoi が clone/apply する。
 dotfiles_repo_url: https://github.com/xande0812/dev-env-dotfiles.git
