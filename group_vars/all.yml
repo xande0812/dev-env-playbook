@@ -11,6 +11,18 @@ dev_user_name: human
 # 日本時間に揃える。base role が timedatectl で冪等に適用する。
 system_timezone: Asia/Tokyo
 
+# egress proxy (squid) の有効/無効トグル。既定 true。
+# 実験などで一時的に egress 制御を外して素通し (直出) にしたいときに false にする
+# (group_vars をこの値にして ansible-pull 再実行、または one-shot で
+#  `-e squid_enabled=false`)。false のとき site.yml は:
+#   - squid role を skip する (install/config/起動・透過 redirect の再適用をしない)
+#   - pre_tasks の redirect-clear が iptables の DEV_SQUID_OUTPUT chain を撤去
+#     (role skip により再適用されないので off のまま残る)
+#   - pre_tasks が squid / dev-egress-squid-redirect の service を stop + disable
+#     (boot 時に redirect unit が squid を引き戻すのを防ぐ)
+# true に戻して再実行すれば squid 運用に復旧する。
+squid_enabled: true
+
 # dotfiles (chezmoi source) の公開リポ。chezmoi が clone/apply する。
 dotfiles_repo_url: https://github.com/xande0812/dev-env-dotfiles.git
 

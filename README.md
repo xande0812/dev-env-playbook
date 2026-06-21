@@ -104,6 +104,27 @@ sudo install -m644 roles/squid/files/allowlist.txt /etc/squid/allowlist.txt
 sudo squid -k parse && sudo systemctl restart squid
 ```
 
+### squid を一時停止する（実験用）
+
+egress 制御を一時的に外して素通し（直出）にしたいときは [group_vars/all.yml](group_vars/all.yml) の `squid_enabled` を `false` にして再実行する（one-shot なら `-e squid_enabled=false`）。`false` のとき [site.yml](site.yml) は squid role を skip し、pre_tasks が iptables の `DEV_SQUID_OUTPUT` redirect chain を撤去したうえで `squid` / `dev-egress-squid-redirect` の両 service を stop + disable する。
+
+> **注意**: `systemctl stop squid` 単体は禁物。redirect chain が残ったまま squid を止めると TCP/80,443 が listen していない intercept port に飛び続け、egress が全滅する（必ず redirect 撤去が先）。playbook 経由なら順序は自動で守られる。
+
+サーバ上で手動で素通しにする場合（sandbox 外シェル, root）:
+
+```bash
+# 1. redirect 撤去 (これが先)
+for b in /usr/sbin/iptables /usr/sbin/ip6tables; do
+  while "$b" -t nat -D OUTPUT -j DEV_SQUID_OUTPUT 2>/dev/null; do :; done
+  "$b" -t nat -F DEV_SQUID_OUTPUT 2>/dev/null || true
+  "$b" -t nat -X DEV_SQUID_OUTPUT 2>/dev/null || true
+done
+# 2. service 停止
+sudo systemctl disable --now dev-egress-squid-redirect squid
+```
+
+復旧は `squid_enabled` を `true` に戻して ansible-pull を再実行すれば squid role が両 service を再 enable し、redirect を貼り直す。
+
 ## 秘密情報
 
 このリポジトリは公開。**秘密値（API キー・鍵・トークン）は一切置かない**。秘密が必要な処理は実行時にホスト側のセキュアな仕組み（SSM Parameter Store / `SendEnv`+`AcceptEnv` の session env 等）から取得する設計に寄せる。`dev_user_pubkey` は**公開鍵**なので git 管理してよい。
