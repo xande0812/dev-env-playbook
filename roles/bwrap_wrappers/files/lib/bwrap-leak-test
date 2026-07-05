@@ -150,6 +150,10 @@ check_variant "$bin/codex-with-dotenv"   "DOTENV_PRIVATE_KEY" || exit 1
 # なり pane 状態が herdr へ届かなくなる (secret leak ではなく機能の回帰検知)。
 check_variant "$claude_base" "HERDR_SOCKET_PATH" || exit 1
 
+# herdr の agent 検知 hint (HERDR_AGENT) が agent-variant に残っていることを静的に担保。
+# 消えると foreground process が bwrap のままでは herdr が agent label を付けられない。
+check_variant "$lib/agent-variant" "HERDR_AGENT" || exit 1
+
 # agent-base に cargo cache 分離 (CARGO_HOME を ~/.cache/cargo に振る) が残っていることを
 # 静的に担保。誤って削ると cargo が ~/.cargo へ素通りし credentials leak リスクが生じる。
 check_variant "$lib/agent-base" "CARGO_HOME" || exit 1

@@ -54,6 +54,13 @@ if rust_tc=$(rustup show active-toolchain 2>/dev/null | awk 'NR==1{print $1}') \
   export PATH="$HOME/.rustup/toolchains/$rust_tc/bin:$PATH"
 fi
 
+# herdr の agent 検知は pane の foreground process 名 (この構成では bwrap) を manifest
+# の id/aliases と照合するため、sandbox 越しでは実 agent を判別できない。herdr 公式の
+# wrapper (Bubblewrap 等) 向け機構として、foreground process の environ にある
+# HERDR_AGENT=<agent> が検知 hint になる (https://herdr.dev/docs/agents/)。exec 連鎖で
+# systemd-run → bwrap 自身の environ に残り、herdr 管理外の pane では単に無視される。
+export HERDR_AGENT="$tool"
+
 cgroup_limits="--property=MemoryMax=4G --property=CPUQuota=400% --property=TasksMax=1024"
 
 # systemd --user が無い環境 (cron, non-login ssh 等) では systemd-run --user が固まる/
