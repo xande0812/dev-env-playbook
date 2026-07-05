@@ -13,4 +13,12 @@ export AGENT_RW_BINDS=".claude .claude.json .config/gh obvault/AI"
 export AGENT_RO_BINDS=""
 export AGENT_TOUCH_FILES=".claude.json"
 export AGENT_MKDIR_DIRS="obvault/AI"
-exec /usr/local/lib/bwrap/agent-base "$@"
+# herdr 連携: herdr が tmux pane に注入する HERDR_* env と制御 socket を sandbox 内へ
+# 透過する。~/.claude/hooks/herdr-agent-state.sh (SessionStart hook) が HERDR_ENV /
+# HERDR_PANE_ID / HERDR_SOCKET_PATH を参照して pane 状態を報告するのに必要。
+# herdr 管理外の pane では env が無く silently skip されるため無害。socket を bind
+# する分 sandbox 内から herdr RPC へ到達可能になるトレードオフは許容する。
+exec /usr/local/lib/bwrap/agent-base \
+  --passthrough-env-prefix HERDR_ \
+  --passthrough-socket-from-env HERDR_SOCKET_PATH \
+  "$@"

@@ -8,7 +8,7 @@
 #   - GIT_SSH_COMMAND が network blocker に固定され exit 99
 #   - git worktree の共有 .git が bind され sandbox 内 commit が通る
 #   - variant が必須 passthrough キー (SSH_AUTH_SOCK / AWS_ACCESS_KEY_ID /
-#     DOTENV_PRIVATE_KEY) を参照
+#     DOTENV_PRIVATE_KEY) を参照 + claude base の HERDR_* passthrough が残存
 #   - pnpm-sandboxed: secret 不可視 + ANTHROPIC_API_KEY canary が剥がれる +
 #     ignore-scripts 強制
 #
@@ -144,6 +144,11 @@ check_variant "$bin/claude-with-dotenv"  "DOTENV_PRIVATE_KEY" || exit 1
 check_variant "$bin/codex-with-git"      "SSH_AUTH_SOCK"      || exit 1
 check_variant "$bin/codex-with-aws-ro"   "AWS_ACCESS_KEY_ID"  || exit 1
 check_variant "$bin/codex-with-dotenv"   "DOTENV_PRIVATE_KEY" || exit 1
+
+# herdr 連携: claude base の HERDR_* passthrough が残っていることを静的に担保。
+# 消えると SessionStart hook (~/.claude/hooks/herdr-agent-state.sh) が silent skip に
+# なり pane 状態が herdr へ届かなくなる (secret leak ではなく機能の回帰検知)。
+check_variant "$claude_base" "HERDR_SOCKET_PATH" || exit 1
 
 # agent-base に cargo cache 分離 (CARGO_HOME を ~/.cache/cargo に振る) が残っていることを
 # 静的に担保。誤って削ると cargo が ~/.cargo へ素通りし credentials leak リスクが生じる。
